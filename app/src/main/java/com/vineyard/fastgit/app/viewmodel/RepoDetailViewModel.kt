@@ -233,13 +233,14 @@ class RepoDetailViewModel(
 
     fun openFile(fileItem: FileItem) {
         AppLogger.i("CodeEditor", "Opening file '${fileItem.path}'")
-        _activeFile.value = fileItem
+        _isLoading.value = true // Display the linear loading progress indicator to provide immediate user feedback
         viewModelScope.launch {
-            if (tokenManager.isDemoMode()) {
-                _fileContent.value = fileItem.content ?: "// Sample Code Content for ${fileItem.name}\npackage com.vineyard.fastgit.app\n\nclass ${fileItem.name.removeSuffix(".kt")} {\n    fun init() {\n        println(\"FastGit Explorer\")\n    }\n}"
-                AppLogger.s("CodeEditor", "Opened file in Demo Mode: ${fileItem.name}")
-            } else {
-                try {
+            try {
+                if (tokenManager.isDemoMode()) {
+                    _fileContent.value = fileItem.content ?: "// Sample Code Content for ${fileItem.name}\npackage com.vineyard.fastgit.app\n\nclass ${fileItem.name.removeSuffix(".kt")} {\n    fun init() {\n        println(\"FastGit Explorer\")\n    }\n}"
+                    AppLogger.s("CodeEditor", "Opened file in Demo Mode: ${fileItem.name}")
+                    _activeFile.value = fileItem // Transition UI once loading is safe and complete
+                } else {
                     val api = RetrofitClient.getService(tokenManager)
                     val details = api.getSingleFileContent(owner, repoName, fileItem.path, _currentBranch.value)
                     if (details.encoding == "base64" && details.content != null) {
@@ -250,10 +251,14 @@ class RepoDetailViewModel(
                         _fileContent.value = details.content ?: ""
                     }
                     AppLogger.s("CodeEditor", "Successfully fetched file content for ${fileItem.path}")
-                } catch (e: Exception) {
-                    AppLogger.e("CodeEditor", "Failed to load content for ${fileItem.path}: ${e.message}", e)
-                    _fileContent.value = "// Error loading file content: ${e.message}"
+                    _activeFile.value = fileItem // Transition UI once loading is safe and complete
                 }
+            } catch (e: Exception) {
+                AppLogger.e("CodeEditor", "Failed to load content for ${fileItem.path}: ${e.message}", e)
+                _fileContent.value = "// Error loading file content: ${e.message}"
+                _activeFile.value = fileItem // Display error message details in editor
+            } finally {
+                _isLoading.value = false // Dismiss loader safely
             }
         }
     }
