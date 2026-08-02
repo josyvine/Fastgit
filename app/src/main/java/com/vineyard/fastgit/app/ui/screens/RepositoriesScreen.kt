@@ -35,6 +35,7 @@ fun RepositoriesScreen(
 
     var showCreateDialog by remember { mutableStateOf(showCreateDialogInitially) }
     var showImportDialog by remember { mutableStateOf(showImportDialogInitially) }
+    var repoToDelete by remember { mutableStateOf<Repository?>(null) }
 
     val filterOptions = listOf("All", "Public", "Private", "Sources", "Forks")
 
@@ -155,7 +156,11 @@ fun RepositoriesScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(filteredRepos) { repo ->
-                        RepoCardItem(repo = repo, onClick = { onSelectRepo(repo) })
+                        RepoCardItem(
+                            repo = repo, 
+                            onClick = { onSelectRepo(repo) },
+                            onDeleteClick = { repoToDelete = repo }
+                        )
                     }
                 }
             }
@@ -178,6 +183,38 @@ fun RepositoriesScreen(
                 Text(msg)
             }
         }
+    }
+
+    // Repository Delete Confirmation Dialog
+    if (repoToDelete != null) {
+        val target = repoToDelete!!
+        AlertDialog(
+            onDismissRequest = { repoToDelete = null },
+            title = { Text("Delete Repository?", color = Color.Red, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete '${target.fullName}'? This action is permanent and cannot be undone.",
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        repoToDelete = null
+                        repositoryViewModel.deleteRepository(target.owner?.login ?: "developer", target.name)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Delete Permanently", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { repoToDelete = null }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = GhSurfaceDark
+        )
     }
 
     // Create Repository Dialog
