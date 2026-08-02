@@ -396,6 +396,31 @@ class RepositoryViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun deleteRepository(owner: String, name: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                if (tokenManager.isDemoMode()) {
+                    _repositories.value = _repositories.value.filterNot { it.name == name && it.owner?.login == owner }
+                    _statusMessage.value = "Repository '$name' deleted successfully (Demo Mode)!"
+                } else {
+                    val api = RetrofitClient.getService(tokenManager)
+                    val response = api.deleteRepository(owner, name)
+                    if (response.isSuccessful) {
+                        _statusMessage.value = "Repository '$name' deleted successfully!"
+                        fetchRepositories()
+                    } else {
+                        _statusMessage.value = "Failed to delete: ${response.message()}"
+                    }
+                }
+            } catch (e: Exception) {
+                _statusMessage.value = "Failed to delete: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun importRepositoryUrl(url: String, onSuccess: (Repository) -> Unit) {
         if (url.isBlank()) {
             _statusMessage.value = "Please enter a valid GitHub URL"
