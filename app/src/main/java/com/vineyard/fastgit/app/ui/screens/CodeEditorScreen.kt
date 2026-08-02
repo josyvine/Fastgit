@@ -32,9 +32,11 @@ fun CodeEditorScreen(
     onBack: () -> Unit,
     onSaveAndCommit: (updatedContent: String, commitMessage: String) -> Unit
 ) {
-    var codeText by remember { mutableStateOf(initialContent) }
-    var undoStack by remember { mutableStateOf(listOf(initialContent)) }
-    var redoStack by remember { mutableStateOf(listOf<String>()) }
+    // Keying these state variables to initialContent ensures that when the asynchronous 
+    // network call finishes loading, the state resets from empty to the loaded file content.
+    var codeText by remember(initialContent) { mutableStateOf(initialContent) }
+    var undoStack by remember(initialContent) { mutableStateOf(listOf(initialContent)) }
+    var redoStack by remember(initialContent) { mutableStateOf(listOf<String>()) }
     var showCommitDialog by remember { mutableStateOf(false) }
 
     val lines = codeText.split("\n")
