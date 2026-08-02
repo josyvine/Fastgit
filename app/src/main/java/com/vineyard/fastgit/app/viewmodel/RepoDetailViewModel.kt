@@ -1,9 +1,13 @@
 package com.vineyard.fastgit.app.viewmodel
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import android.util.Base64
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vineyard.fastgit.app.models.*
@@ -14,11 +18,13 @@ import com.vineyard.fastgit.app.utils.DownloadUtils
 import com.vineyard.fastgit.app.utils.TokenManager
 import com.vineyard.fastgit.app.utils.ZipUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import okhttp3.ResponseBody
 
 class RepoDetailViewModel(
     application: Application,
@@ -71,6 +77,13 @@ class RepoDetailViewModel(
 
     private val _workflowRuns = MutableStateFlow<List<WorkflowRun>>(emptyList())
     val workflowRuns: StateFlow<List<WorkflowRun>> = _workflowRuns
+
+    // Workflow Logs State
+    private val _workflowLogs = MutableStateFlow<String?>(null)
+    val workflowLogs: StateFlow<String?> = _workflowLogs
+
+    private val _isLogsLoading = MutableStateFlow(false)
+    val isLogsLoading: StateFlow<Boolean> = _isLogsLoading
 
     // Releases
     private val _releases = MutableStateFlow<List<Release>>(emptyList())
@@ -259,6 +272,30 @@ class RepoDetailViewModel(
                 _activeFile.value = fileItem // Display error message details in editor
             } finally {
                 _isLoading.value = false // Dismiss loader safely
+            }
+        }
+    }
+
+    fun downloadSingleFileToDevice(fileItem: FileItem, content: String, context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val fastGitDir = File(downloadsDir, "FastGit")
+                if (!fastGitDir.exists()) {
+                    fastGitDir.mkdirs()
+                }
+                val targetFile = File(fastGitDir, fileItem.name)
+                targetFile.writeText(content)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Saved successfully to: Downloads/FastGit/${fileItem.name}", Toast.LENGTH_LONG).show()
+                    _statusMessage.value = "Downloaded: Downloads/FastGit/${fileItem.name}"
+                }
+            } catch (e: Exception) {
+                AppLogger.e("DownloadFile", "Error saving editor file: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -875,6 +912,141 @@ class RepoDetailViewModel(
         }
     }
 
+    fun fetchWorkflowRunLogs(runId: Long) {
+        if (tokenManager.isDemoMode()) {
+            _isLogsLoading.value = true
+            viewModelScope.launch {
+                delay(1200)
+                _workflowLogs.value = """
+                    [Actions] Initializing build agent workspace environment...
+                    [CI/CD] Triggered run matching standard Kotlin-Android compilation sequence.
+                    [Gradle] Executing job tasks: ':app:compileDebugKotlin' and ':app:bundleDebugClasses'
+                    [Compiler] Scanned 34 project code sources with warnings: 0, errors: 0.
+                    [Artifact] app-debug.apk bundle successfully constructed (Size: 3.42 MB).
+                    [Finished] Process session completed cleanly.
+                """.trimIndent()
+                _isLogsLoading.value = false
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _isLogsLoading.value = true
+            _workflowLogs.value = "Retrieving workflow build parameters..."
+            try {
+                val api = RetrofitClient.getService(tokenManager)
+                val jobsResponse = api.getWorkflowRunJobs(owner, repoName, runId)
+                val jobs = jobsResponse.jobs ?: emptyList()
+                if (jobs.isEmpty()) {
+                    _workflowLogs.value = "No build jobs detected for this workflow run."
+                    return@launch
+                }
+
+                val combinedLogs = StringBuilder()
+                for (job in jobs) {
+                    combinedLogs.append("--- JOB STEP: ${job.name} (Status: ${job.status}, Conclusion: ${job.conclusion ?: "pending"}) ---\n")
+                    try {
+                        val logBody = api.getJobLogs(owner, repoName, job.id)
+                        combinedLogs.append(logBody.string())
+                    } catch (e: Exception) {
+                        combinedLogs.append("Unable to retrieve logs for step execution: ${e.message}\n")
+                    }
+                    combinedLogs.append("\n")
+                }
+                _workflowLogs.value = combinedLogs.toString()
+            } catch (e: Exception) {
+                AppLogger.e("WorkflowLogs", "Workflow run logs lookup failed: ${e.message}", e)
+                _workflowLogs.value = "Workflow logs retrieve error: ${e.message}"
+            } finally {
+                _isLogsLoading.value = false
+            }
+        }
+    }
+
+    fun downloadWorkflowRunLogs(runId: Long, runNumber: Int, context: Context) {
+        val logs = _workflowLogs.value
+        if (logs.isNullOrBlank()) {
+            Toast.makeText(context, "Request log parameters first to trigger download.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val fastGitDir = File(downloadsDir, "FastGit/Logs")
+                if (!fastGitDir.exists()) {
+                    fastGitDir.mkdirs()
+                }
+                val targetFile = File(fastGitDir, "build_run_${runNumber}.txt")
+                targetFile.writeText(logs)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Saved log report to: Downloads/FastGit/Logs/build_run_${runNumber}.txt", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                AppLogger.e("DownloadLogs", "Error exporting logs to storage: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Log download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun copyWorkflowLogsDirect(runId: Long, context: Context) {
+        if (tokenManager.isDemoMode()) {
+            val mockLogs = """
+                [Actions] Initializing build agent workspace environment...
+                [CI/CD] Triggered run matching standard Kotlin-Android compilation sequence.
+                [Gradle] Executing job tasks: ':app:compileDebugKotlin' and ':app:bundleDebugClasses'
+                [Compiler] Scanned 34 project code sources with warnings: 0, errors: 0.
+                [Artifact] app-debug.apk bundle successfully constructed (Size: 3.42 MB).
+                [Finished] Process session completed cleanly.
+            """.trimIndent()
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Build Logs", mockLogs)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(context, "Build logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val api = RetrofitClient.getService(tokenManager)
+                val jobsResponse = api.getWorkflowRunJobs(owner, repoName, runId)
+                val jobs = jobsResponse.jobs ?: emptyList()
+                if (jobs.isEmpty()) {
+                    Toast.makeText(context, "No jobs available to extract logs.", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val combinedLogs = StringBuilder()
+                for (job in jobs) {
+                    combinedLogs.append("--- JOB STEP: ${job.name} (Status: ${job.status}, Conclusion: ${job.conclusion ?: "pending"}) ---\n")
+                    try {
+                        val logBody = api.getJobLogs(owner, repoName, job.id)
+                        combinedLogs.append(logBody.string())
+                    } catch (e: Exception) {
+                        combinedLogs.append("Unable to copy logs for this step: ${e.message}\n")
+                    }
+                    combinedLogs.append("\n")
+                }
+
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Build Logs", combinedLogs.toString())
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(context, "Build logs copied to clipboard successfully!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to capture build logs: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun clearWorkflowLogs() {
+        _workflowLogs.value = null
+    }
+
     fun triggerWorkflow(workflowId: Long) {
         viewModelScope.launch {
             try {
@@ -915,6 +1087,10 @@ class RepoDetailViewModel(
         _fileContent.value = ""
     }
 }
+
+// Data structures representing GitHub Actions Job response structures safely
+data class WorkflowRunJobsResponse(val jobs: List<WorkflowJob>?)
+data class WorkflowJob(val id: Long, val name: String, val status: String, val conclusion: String?)
 
 // Builds a nested FileItem hierarchy from scanned extracted ZIP files
 fun buildFileTreeFromScannedFiles(scannedFiles: List<ZipUtils.ExtractedFileInfo>): List<FileItem> {
