@@ -17,6 +17,28 @@ object DownloadUtils {
     }
 
     /**
+     * Saves a text-based payload (such as source code or build logs) cleanly 
+     * inside the public device storage (Environment.DIRECTORY_DOWNLOADS) 
+     * under the 'FastGit' parent folder hierarchy.
+     */
+    fun saveTextToDownloads(subFolder: String, fileName: String, content: String): File {
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val parentDir = if (subFolder.isEmpty()) {
+            File(downloadsDir, "FastGit")
+        } else {
+            File(downloadsDir, "FastGit/$subFolder")
+        }
+        
+        if (!parentDir.exists()) {
+            parentDir.mkdirs()
+        }
+        
+        val targetFile = File(parentDir, fileName)
+        targetFile.writeText(content)
+        return targetFile
+    }
+
+    /**
      * Downloads a FileItem directory structure as a local ZIP file.
      */
     fun createZipFromFolderItems(
