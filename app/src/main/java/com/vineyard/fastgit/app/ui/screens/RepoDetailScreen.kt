@@ -1,8 +1,11 @@
 package com.vineyard.fastgit.app.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -12,8 +15,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -34,7 +39,7 @@ import com.vineyard.fastgit.app.ui.theme.*
 import com.vineyard.fastgit.app.viewmodel.RepoDetailViewModel
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun RepoDetailScreen(
     repoDetailViewModel: RepoDetailViewModel,
@@ -51,6 +56,11 @@ fun RepoDetailScreen(
 
     val activeFile by repoDetailViewModel.activeFile.collectAsState()
     val fileContent by repoDetailViewModel.fileContent.collectAsState()
+
+    // Logs states
+    var selectedRunForLogs by remember { mutableStateOf<WorkflowRun?>(null) }
+    val workflowLogs by repoDetailViewModel.workflowLogs.collectAsState()
+    val isLogsLoading by repoDetailViewModel.isLogsLoading.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
     val tabTitles = listOf("Explorer", "Branches", "Commits", "PRs", "Issues", "Actions", "Releases", "Settings")
@@ -71,6 +81,9 @@ fun RepoDetailScreen(
             onBack = { repoDetailViewModel.closeActiveFile() },
             onSaveAndCommit = { updatedContent, commitMsg ->
                 repoDetailViewModel.saveAndCommitFile(activeFile!!, updatedContent, commitMsg)
+            },
+            onDownloadClick = { content ->
+                repoDetailViewModel.downloadSingleFileToDevice(activeFile!!, content, context)
             }
         )
         return
@@ -173,12 +186,111 @@ fun RepoDetailScreen(
                     2 -> CommitsTabContent(repoDetailViewModel)
                     3 -> PRsTabContent(repoDetailViewModel)
                     4 -> IssuesTabContent(repoDetailViewModel)
-                    5 -> ActionsTabContent(repoDetailViewModel)
+                    5 -> ActionsTabContent(
+                        repoDetailViewModel = repoDetailViewModel,
+                        onShowLogViewer = { run ->
+                            repoDetailViewModel.fetchWorkflowRunLogs(run.id)
+                            selectedRunForLogs = run
+                        }
+                    )
                     6 -> ReleasesTabContent(repoDetailViewModel)
                     7 -> RepoSettingsTabContent(repoDetailViewModel, onBack)
                 }
             }
         }
+    }
+
+    // Workflow Build Logs Overlay Dialog
+    if (selectedRunForLogs != null) {
+        var showLogsContextMenu by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = {
+                selectedRunForLogs = null
+                repoDetailViewModel.clearWorkflowLogs()
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Terminal, contentDescription = null, tint = GhAccentBlue)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Build Logs: Run #${selectedRunForLogs?.runNumber}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            },
+            text = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .background(Color(0xFF04060A), RoundedCornerShape(8.dp))
+                        .combinedClickable(
+                            onClick = { /* dismiss selections if any */ },
+                            onLongClick = { showLogsContextMenu = true }
+                        )
+                        .padding(8.dp)
+                ) {
+                    if (isLogsLoading) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = GhAccentBlue)
+                        }
+                    } else {
+                        val verticalScroll = rememberScrollState()
+                        Text(
+                            text = workflowLogs ?: "Build parameters requested. Awaiting actions context...",
+                            color = Color(0xFFC9D1D9),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(verticalScroll)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showLogsContextMenu,
+                        onDismissRequest = { showLogsContextMenu = false },
+                        modifier = Modifier.background(GhSurfaceDark)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Copy Build Logs", color = Color.White) },
+                            onClick = {
+                                showLogsContextMenu = false
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Build Logs", workflowLogs ?: "")
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Build logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+                            },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Download Build Logs", color = GhSuccessGreen) },
+                            onClick = {
+                                showLogsContextMenu = false
+                                selectedRunForLogs?.let { run ->
+                                    repoDetailViewModel.downloadWorkflowRunLogs(run.id, run.runNumber, context)
+                                }
+                            },
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        selectedRunForLogs = null
+                        repoDetailViewModel.clearWorkflowLogs()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GhAccentBlue)
+                ) {
+                    Text("Close", color = Color.White)
+                }
+            },
+            containerColor = GhSurfaceDark
+        )
     }
 
     // ZIP Upload Progress Dialog
@@ -1347,10 +1459,15 @@ fun IssuesTabContent(repoDetailViewModel: RepoDetailViewModel) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ActionsTabContent(repoDetailViewModel: RepoDetailViewModel) {
+fun ActionsTabContent(
+    repoDetailViewModel: RepoDetailViewModel,
+    onShowLogViewer: (WorkflowRun) -> Unit
+) {
     val workflows by repoDetailViewModel.workflows.collectAsState()
     val workflowRuns by repoDetailViewModel.workflowRuns.collectAsState()
+    val context = LocalContext.current
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -1383,23 +1500,54 @@ fun ActionsTabContent(repoDetailViewModel: RepoDetailViewModel) {
         }
 
         items(workflowRuns) { run ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
-                border = ButtonDefaults.outlinedButtonBorder(enabled = true)
-            ) {
-                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (run.conclusion == "success") Icons.Default.CheckCircle else Icons.Default.Cancel,
-                        contentDescription = null,
-                        tint = if (run.conclusion == "success") GhSuccessGreen else GhErrorRed
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(run.name ?: "Workflow Run #${run.runNumber}", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 13.sp)
-                        Text("branch: ${run.headBranch} • status: ${run.status}", fontSize = 11.sp, color = GhTextSecondaryDark)
+            var runMenuExpanded by remember { mutableStateOf(false) }
+            Box {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { onShowLogViewer(run) },
+                            onLongClick = { runMenuExpanded = true }
+                        ),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true)
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (run.conclusion == "success") Icons.Default.CheckCircle else Icons.Default.Cancel,
+                            contentDescription = null,
+                            tint = if (run.conclusion == "success") GhSuccessGreen else GhErrorRed
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(run.name ?: "Workflow Run #${run.runNumber}", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 13.sp)
+                            Text("branch: ${run.headBranch} • status: ${run.status}", fontSize = 11.sp, color = GhTextSecondaryDark)
+                        }
                     }
+                }
+
+                DropdownMenu(
+                    expanded = runMenuExpanded,
+                    onDismissRequest = { runMenuExpanded = false },
+                    modifier = Modifier.background(GhSurfaceDark)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Copy Run Logs", color = Color.White) },
+                        onClick = {
+                            runMenuExpanded = false
+                            repoDetailViewModel.copyWorkflowLogsDirect(run.id, context)
+                        },
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Download Run Logs", color = GhSuccessGreen) },
+                        onClick = {
+                            runMenuExpanded = false
+                            repoDetailViewModel.downloadWorkflowRunLogs(run.id, run.runNumber, context)
+                        },
+                        leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
+                    )
                 }
             }
         }
