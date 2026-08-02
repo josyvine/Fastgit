@@ -1,5 +1,9 @@
 package com.vineyard.fastgit.app.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -15,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -30,8 +35,11 @@ fun CodeEditorScreen(
     fileItem: FileItem,
     initialContent: String,
     onBack: () -> Unit,
-    onSaveAndCommit: (updatedContent: String, commitMessage: String) -> Unit
+    onSaveAndCommit: (updatedContent: String, commitMessage: String) -> Unit,
+    onDownloadClick: (content: String) -> Unit
 ) {
+    val context = LocalContext.current
+
     // Keying these state variables to initialContent ensures that when the asynchronous 
     // network call finishes loading, the state resets from empty to the loaded file content.
     var codeText by remember(initialContent) { mutableStateOf(initialContent) }
@@ -65,6 +73,27 @@ fun CodeEditorScreen(
                     }
                 },
                 actions = {
+                    // Copy Code Button
+                    IconButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Copied Code", codeText)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Code copied to clipboard!", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", tint = Color.White)
+                    }
+
+                    // Download File Button
+                    IconButton(
+                        onClick = {
+                            onDownloadClick(codeText)
+                        }
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = "Download File", tint = Color.White)
+                    }
+
                     // Undo
                     IconButton(
                         onClick = {
