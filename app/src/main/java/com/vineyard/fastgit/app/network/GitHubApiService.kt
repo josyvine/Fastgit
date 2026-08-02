@@ -183,6 +183,20 @@ interface GitHubApiService {
         @Body body: Map<String, String>
     ): Response<Unit>
 
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}/jobs")
+    suspend fun getWorkflowRunJobs(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long
+    ): WorkflowRunJobsResponse
+
+    @GET("repos/{owner}/{repo}/actions/jobs/{job_id}/logs")
+    suspend fun getJobLogs(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("job_id") jobId: Long
+    ): ResponseBody
+
     // Releases
     @GET("repos/{owner}/{repo}/releases")
     suspend fun getReleases(
@@ -208,3 +222,7 @@ interface GitHubApiService {
         @Path("thread_id") threadId: String
     ): Response<Unit>
 }
+
+// Data structures representing mapping schemas safely
+data class WorkflowRunJobsResponse(val jobs: List<WorkflowJob>?)
+data class WorkflowJob(val id: Long, val name: String, val status: String, val conclusion: String?)
