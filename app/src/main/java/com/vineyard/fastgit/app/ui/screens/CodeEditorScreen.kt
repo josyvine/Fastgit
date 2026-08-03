@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.vineyard.fastgit.app.models.FileItem
 import com.vineyard.fastgit.app.ui.theme.*
 import com.vineyard.fastgit.app.utils.SyntaxHighlighter
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,12 +41,14 @@ fun CodeEditorScreen(
 ) {
     val context = LocalContext.current
 
-    // Keying these state variables to initialContent ensures that when the asynchronous 
-    // network call finishes loading, the state resets from empty to the loaded file content.
+    // State variables for editor contents
     var codeText by remember(initialContent) { mutableStateOf(initialContent) }
     var undoStack by remember(initialContent) { mutableStateOf(listOf(initialContent)) }
     var redoStack by remember(initialContent) { mutableStateOf(listOf<String>()) }
     var showCommitDialog by remember { mutableStateOf(false) }
+
+    // Track the last state pushed to the undo stack to optimize memory allocations
+    var lastPushedText by remember(initialContent) { mutableStateOf(initialContent) }
 
     val lines = codeText.split("\n")
 
@@ -94,7 +97,7 @@ fun CodeEditorScreen(
                         Icon(Icons.Default.Download, contentDescription = "Download File", tint = Color.White)
                     }
 
-                    // Undo
+                    // Undo Action
                     IconButton(
                         onClick = {
                             if (undoStack.size > 1) {
@@ -103,14 +106,19 @@ fun CodeEditorScreen(
                                 val prev = undoStack[undoStack.size - 2]
                                 undoStack = undoStack.dropLast(1)
                                 codeText = prev
+                                lastPushedText = prev
                             }
                         },
                         enabled = undoStack.size > 1
                     ) {
-                        Icon(Icons.Default.Undo, contentDescription = "Undo", tint = if (undoStack.size > 1) Color.White else GhTextSecondaryDark)
+                        Icon(
+                            imageVector = Icons.Default.Undo,
+                            contentDescription = "Undo",
+                            tint = if (undoStack.size > 1) Color.White else GhTextSecondaryDark
+                        )
                     }
 
-                    // Redo
+                    // Redo Action
                     IconButton(
                         onClick = {
                             if (redoStack.isNotEmpty()) {
@@ -118,11 +126,16 @@ fun CodeEditorScreen(
                                 redoStack = redoStack.dropLast(1)
                                 undoStack = undoStack + next
                                 codeText = next
+                                lastPushedText = next
                             }
                         },
                         enabled = redoStack.isNotEmpty()
                     ) {
-                        Icon(Icons.Default.Redo, contentDescription = "Redo", tint = if (redoStack.isNotEmpty()) Color.White else GhTextSecondaryDark)
+                        Icon(
+                            imageVector = Icons.Default.Redo,
+                            contentDescription = "Redo",
+                            tint = if (redoStack.isNotEmpty()) Color.White else GhTextSecondaryDark
+                        )
                     }
 
                     // Save & Commit Button
@@ -168,13 +181,21 @@ fun CodeEditorScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Text Editor Code Area with Syntax Highlighting
+                // Text Editor Code Area with High-Performance Syntax Highlighting
                 BasicTextField(
                     value = codeText,
                     onValueChange = { newText ->
                         codeText = newText
-                        undoStack = undoStack + newText
-                        redoStack = emptyList()
+                        val delta = abs(newText.length - lastPushedText.length)
+
+                        // Only write to undo history stack during major adjustments or word boundaries
+                        if (delta > 1 || (newText.isNotEmpty() && (newText.last() == ' ' || newText.last() == '\n'))) {
+                            if (newText != lastPushedText) {
+                                undoStack = undoStack + newText
+                                lastPushedText = newText
+                                redoStack = emptyList()
+                            }
+                        }
                     },
                     textStyle = TextStyle(
                         fontFamily = FontFamily.Monospace,
@@ -222,6 +243,11 @@ fun CodeEditorScreen(
                 Button(
                     onClick = {
                         showCommitDialog = false
+                        // Ensure final typed changes are pushed to history stack before committing
+                        if (codeText != lastPushedText) {
+                            undoStack = undoStack + codeText
+                            lastPushedText = codeText
+                        }
                         onSaveAndCommit(codeText, commitMsg)
                         onBack()
                     },
