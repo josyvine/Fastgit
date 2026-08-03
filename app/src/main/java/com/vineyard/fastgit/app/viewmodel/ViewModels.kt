@@ -407,16 +407,87 @@ class RepositoryViewModel(application: Application) : AndroidViewModel(applicati
                     val api = RetrofitClient.getService(tokenManager)
                     val response = api.deleteRepository(owner, name)
                     if (response.isSuccessful) {
+                        // Safely filter internal list immediately for snappy state refresh
+                        _repositories.value = _repositories.value.filterNot { it.name == name && it.owner?.login == owner }
                         _statusMessage.value = "Repository '$name' deleted successfully!"
                         fetchRepositories()
                     } else {
-                        _statusMessage.value = "Failed to delete: ${response.message()}"
+                        val errorDetail = response.errorBody()?.string() ?: response.message()
+                        _statusMessage.value = "Failed to delete: $errorDetail"
+                        com.vineyard.fastgit.app.utils.AppLogger.e("RepositoryViewModel", "Delete failed: $errorDetail")
                     }
                 }
             } catch (e: Exception) {
                 _statusMessage.value = "Failed to delete: ${e.message}"
+                com.vineyard.fastgit.app.utils.AppLogger.e("RepositoryViewModel", "Delete caught exception", e)
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun downloadRepositoryAsZip(owner: String, repoName: String, branch: String, context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                _isLoading.value = true
+                _statusMessage.value = "Downloading repository ZIP..."
+            }
+
+            try {
+                val targetBranch = branch.ifBlank { "main" }
+                val targetFileName = "$repoName-$targetBranch.zip"
+
+                if (tokenManager.isDemoMode()) {
+                    val mockItems = listOf(
+                        FileItem(name = "README.md", type = "file", content = "# Demo Project\nLocal bundle saved offline.")
+                    )
+                    val zip = DownloadUtils.createZipFromFolderItems(context, repoName, mockItems)
+                    val bytes = zip.readBytes()
+                    val savedFile = DownloadUtils.saveBinaryToDownloads(context, "", targetFileName, bytes)
+                    zip.delete()
+
+                    withContext(Dispatchers.Main) {
+                        if (savedFile != null) {
+                            _statusMessage.value = "Saved successfully: Downloads/FastGit/$targetFileName"
+                        } else {
+                            _statusMessage.value = "Download failed: Local storage write error"
+                        }
+                    }
+                    return@launch
+                }
+
+                val api = RetrofitClient.getService(tokenManager)
+                com.vineyard.fastgit.app.utils.AppLogger.i("RepositoryViewModel", "Downloading zipball for $owner/$repoName ($targetBranch)")
+                val response = api.downloadZipball(owner, repoName, targetBranch)
+
+                if (response.isSuccessful && response.body() != null) {
+                    val bytes = response.body()!!.bytes()
+                    val savedFile = DownloadUtils.saveBinaryToDownloads(context, "", targetFileName, bytes)
+
+                    withContext(Dispatchers.Main) {
+                        if (savedFile != null) {
+                            _statusMessage.value = "Saved successfully: Downloads/FastGit/$targetFileName"
+                            com.vineyard.fastgit.app.utils.AppLogger.s("RepositoryViewModel", "Saved ZIP file $targetFileName successfully.")
+                        } else {
+                            _statusMessage.value = "Download failed: MediaStore write error"
+                        }
+                    }
+                } else {
+                    val errMsg = response.errorBody()?.string() ?: response.message()
+                    withContext(Dispatchers.Main) {
+                        _statusMessage.value = "Download failed: $errMsg"
+                    }
+                    com.vineyard.fastgit.app.utils.AppLogger.e("RepositoryViewModel", "Download failed with error: $errMsg")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Download failed: ${e.message}"
+                }
+                com.vineyard.fastgit.app.utils.AppLogger.e("RepositoryViewModel", "Download exception caught", e)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    _isLoading.value = false
+                }
             }
         }
     }
