@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,10 +35,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import com.vineyard.fastgit.app.models.*
 import com.vineyard.fastgit.app.ui.theme.*
 import com.vineyard.fastgit.app.viewmodel.RepoDetailViewModel
 import java.io.File
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -208,6 +211,10 @@ fun RepoDetailScreen(
                 selectedRunForLogs = null
                 repoDetailViewModel.clearWorkflowLogs()
             },
+            properties = DialogProperties(usePlatformDefaultWidth = false), // Relaxes standard platform alert width bounds [2]
+            modifier = Modifier
+                .fillMaxWidth(0.95f) // Sized to provide high readability on tablet/mobile screens
+                .fillMaxHeight(0.85f),
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(imageVector = Icons.Default.Terminal, contentDescription = null, tint = GhAccentBlue)
@@ -223,8 +230,7 @@ fun RepoDetailScreen(
             text = {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp)
+                        .fillMaxSize()
                         .background(Color(0xFF04060A), RoundedCornerShape(8.dp))
                         .combinedClickable(
                             onClick = { /* dismiss selections if any */ },
@@ -354,6 +360,7 @@ fun RepoDetailScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExplorerTabContent(
     repoDetailViewModel: RepoDetailViewModel,
@@ -364,6 +371,7 @@ fun ExplorerTabContent(
     val copiedItem by repoDetailViewModel.copiedItem.collectAsState()
     val isLoading by repoDetailViewModel.isLoading.collectAsState()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     // 0: Tree Explorer (VS Code Style), 1: Folder Navigation (GitHub App Style)
     var explorerMode by remember { mutableStateOf(0) }
@@ -426,311 +434,325 @@ fun ExplorerTabContent(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(12.dp)
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            isRefreshing = true
+            coroutineScope.launch {
+                repoDetailViewModel.refreshExplorer()
+                isRefreshing = false
+            }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
-        // Quick Action Toolbar for Explorer
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
-            border = ButtonDefaults.outlinedButtonBorder(enabled = true),
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp)
         ) {
-            Column(modifier = Modifier.padding(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Upload Project ZIP
-                    Button(
-                        onClick = onUploadZipClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Upload ZIP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Search & Replace (VS Code Style)
-                    OutlinedButton(
-                        onClick = { showSearchReplaceDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.FindReplace, contentDescription = null, tint = GhAccentBlue, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Refactor / Replace", fontSize = 11.sp, color = Color.White)
-                    }
-
-                    // New File
-                    OutlinedButton(
-                        onClick = { showNewFileDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("New File", fontSize = 11.sp, color = Color.White)
-                    }
-                }
-
-                if (copiedItem != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF161B22), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Copied: ${copiedItem?.name}",
-                            fontSize = 11.sp,
-                            color = GhAccentBlue,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(
-                            onClick = { repoDetailViewModel.pasteCopiedItem(currentPath) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text("Paste to /${currentPath.ifEmpty { "root" }}", fontSize = 11.sp, color = GhSuccessGreen, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // View Mode Switcher Pills (Tree vs Folder View)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                modifier = Modifier
-                    .background(GhSurfaceDark, RoundedCornerShape(8.dp))
-                    .padding(2.dp)
+            // Quick Action Toolbar for Explorer
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
+                border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Surface(
-                    onClick = { explorerMode = 0 },
-                    color = if (explorerMode == 0) GhAccentBlue else Color.Transparent,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
+                Column(modifier = Modifier.padding(8.dp)) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AccountTree,
-                            contentDescription = null,
-                            tint = if (explorerMode == 0) Color.White else GhTextSecondaryDark,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Tree View",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (explorerMode == 0) Color.White else GhTextSecondaryDark
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = { explorerMode = 1 },
-                    color = if (explorerMode == 1) GhAccentBlue else Color.Transparent,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = null,
-                            tint = if (explorerMode == 1) Color.White else GhTextSecondaryDark,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Folder View",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (explorerMode == 1) Color.White else GhTextSecondaryDark
-                        )
-                    }
-                }
-            }
-
-            if (explorerMode == 0) {
-                Text(
-                    text = "Tap arrow to expand inline",
-                    fontSize = 10.sp,
-                    color = GhTextSecondaryDark
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Breadcrumb Navigation Bar
-        BreadcrumbBar(
-            currentPath = currentPath,
-            onNavigatePath = { targetPath -> repoDetailViewModel.navigateToDirectory(targetPath) }
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (isLoading) {
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp),
-                color = GhAccentBlue,
-                trackColor = GhCardBorderDark
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-
-        // Directory Explorer Tree List (Optimized with LazyColumn Recycling)
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Parent Folder Row (..) when inside a subfolder
-            if (currentPath.isNotEmpty()) {
-                item(key = "parent_folder_nav_up") {
-                    ParentFolderNodeRow(
-                        currentPath = currentPath,
-                        onNavigateUp = {
-                            val parentPath = if (currentPath.contains("/")) currentPath.substringBeforeLast("/") else ""
-                            repoDetailViewModel.navigateToDirectory(parentPath)
+                        // Upload Project ZIP
+                        Button(
+                            onClick = onUploadZipClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Upload ZIP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
+
+                        // Search & Replace (VS Code Style)
+                        OutlinedButton(
+                            onClick = { showSearchReplaceDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.FindReplace, contentDescription = null, tint = GhAccentBlue, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Refactor / Replace", fontSize = 11.sp, color = Color.White)
+                        }
+
+                        // New File
+                        OutlinedButton(
+                            onClick = { showNewFileDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("New File", fontSize = 11.sp, color = Color.White)
+                        }
+                    }
+
+                    if (copiedItem != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF161B22), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Copied: ${copiedItem?.name}",
+                                fontSize = 11.sp,
+                                color = GhAccentBlue,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = { repoDetailViewModel.pasteCopiedItem(currentPath) },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Paste to /${currentPath.ifEmpty { "root" }}", fontSize = 11.sp, color = GhSuccessGreen, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // View Mode Switcher Pills (Tree vs Folder View)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(GhSurfaceDark, RoundedCornerShape(8.dp))
+                        .padding(2.dp)
+                ) {
+                    Surface(
+                        onClick = { explorerMode = 0 },
+                        color = if (explorerMode == 0) GhAccentBlue else Color.Transparent,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountTree,
+                                contentDescription = null,
+                                tint = if (explorerMode == 0) Color.White else GhTextSecondaryDark,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Tree View",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (explorerMode == 0) Color.White else GhTextSecondaryDark
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = { explorerMode = 1 },
+                        color = if (explorerMode == 1) GhAccentBlue else Color.Transparent,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (explorerMode == 1) Color.White else GhTextSecondaryDark,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Folder View",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (explorerMode == 1) Color.White else GhTextSecondaryDark
+                            )
+                        }
+                    }
+                }
+
+                if (explorerMode == 0) {
+                    Text(
+                        text = "Tap arrow to expand inline",
+                        fontSize = 10.sp,
+                        color = GhTextSecondaryDark
                     )
                 }
             }
 
-            if (visibleItems.isEmpty() && !isLoading) {
-                item(key = "empty_directory_banner") {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
-                        border = ButtonDefaults.outlinedButtonBorder(enabled = true),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp)
-                    ) {
-                        Column(
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Breadcrumb Navigation Bar
+            BreadcrumbBar(
+                currentPath = currentPath,
+                onNavigatePath = { targetPath -> repoDetailViewModel.navigateToDirectory(targetPath) }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    color = GhAccentBlue,
+                    trackColor = GhCardBorderDark
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            // Directory Explorer Tree List (Optimized with LazyColumn Recycling)
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Parent Folder Row (..) when inside a subfolder
+                if (currentPath.isNotEmpty()) {
+                    item(key = "parent_folder_nav_up") {
+                        ParentFolderNodeRow(
+                            currentPath = currentPath,
+                            onNavigateUp = {
+                                val parentPath = if (currentPath.contains("/")) currentPath.substringBeforeLast("/") else ""
+                                repoDetailViewModel.navigateToDirectory(parentPath)
+                            }
+                        )
+                    }
+                }
+
+                if (visibleItems.isEmpty() && !isLoading) {
+                    item(key = "empty_directory_banner") {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
+                            border = ButtonDefaults.outlinedButtonBorder(enabled = true),
                             modifier = Modifier
-                                .padding(20.dp)
-                                .fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                tint = GhAccentBlue,
-                                modifier = Modifier.size(40.dp)
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = if (currentPath.isEmpty()) "This repository is empty" else "This folder is empty",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (currentPath.isEmpty()) 
-                                    "No files found on branch. Upload a ZIP project or add a file to get started." 
-                                else 
-                                    "No files found in /$currentPath",
-                                color = GhTextSecondaryDark,
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = onUploadZipClick,
-                                    colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Upload ZIP", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                                OutlinedButton(
-                                    onClick = { showNewFileDialog = true },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("New File", fontSize = 12.sp, color = Color.White)
+                            Column(
+                                modifier = Modifier
+                                    .padding(20.dp)
+                                    .fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    tint = GhAccentBlue,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = if (currentPath.isEmpty()) "This repository is empty" else "This folder is empty",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (currentPath.isEmpty()) 
+                                        "No files found on branch. Upload a ZIP project or add a file to get started." 
+                                    else 
+                                        "No files found in /$currentPath",
+                                    color = GhTextSecondaryDark,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = onUploadZipClick,
+                                        colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Upload ZIP", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showNewFileDialog = true },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("New File", fontSize = 12.sp, color = Color.White)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            items(visibleItems, key = { "tree_${it.type}_${it.path}" }) { item ->
-                TreeItemNodeRow(
-                    item = item,
-                    explorerMode = explorerMode,
-                    copiedItem = copiedItem,
-                    onItemClick = { target ->
-                        if (target.type == "dir") {
-                            if (explorerMode == 1) {
-                                // Folder View mode: Navigate directly into subfolder
-                                repoDetailViewModel.navigateToDirectory(target.path)
-                            } else {
-                                // Tree View mode: Expand/collapse inline
-                                val isExp = expandedPaths.contains(target.path)
-                                if (!isExp && target.children.isEmpty()) {
-                                    repoDetailViewModel.fetchSubfolderContents(target.path)
+                items(visibleItems, key = { "tree_${it.type}_${it.path}" }) { item ->
+                    TreeItemNodeRow(
+                        item = item,
+                        explorerMode = explorerMode,
+                        copiedItem = copiedItem,
+                        onItemClick = { target ->
+                            if (target.type == "dir") {
+                                if (explorerMode == 1) {
+                                    // Folder View mode: Navigate directly into subfolder
+                                    repoDetailViewModel.navigateToDirectory(target.path)
+                                } else {
+                                    // Tree View mode: Expand/collapse inline
+                                    val isExp = expandedPaths.contains(target.path)
+                                    if (!isExp && target.children.isEmpty()) {
+                                        repoDetailViewModel.fetchSubfolderContents(target.path)
+                                    }
+                                    expandedPaths = if (isExp) expandedPaths - target.path else expandedPaths + target.path
                                 }
-                                expandedPaths = if (isExp) expandedPaths - target.path else expandedPaths + target.path
+                            } else {
+                                repoDetailViewModel.openFile(target)
                             }
-                        } else {
-                            repoDetailViewModel.openFile(target)
-                        }
-                    },
-                    onOpenFolderDirect = { folder ->
-                        repoDetailViewModel.navigateToDirectory(folder.path)
-                    },
-                    onCopyItem = { fileItem -> repoDetailViewModel.copyItem(fileItem) },
-                    onPasteIntoFolder = { folderPath -> repoDetailViewModel.pasteCopiedItem(folderPath) },
-                    onRenameItem = { fileItem -> renameTargetItem = fileItem },
-                    onDeleteItem = { fileItem -> deleteTargetItem = fileItem },
-                    onDownloadFolderZip = { folder ->
-                        repoDetailViewModel.downloadFolderAsZip(folder, context) { zipFile ->
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                zipFile
-                            )
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "application/zip"
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        },
+                        onOpenFolderDirect = { folder ->
+                            repoDetailViewModel.navigateToDirectory(folder.path)
+                        },
+                        onCopyItem = { fileItem -> repoDetailViewModel.copyItem(fileItem) },
+                        onPasteIntoFolder = { folderPath -> repoDetailViewModel.pasteCopiedItem(folderPath) },
+                        onRenameItem = { fileItem -> renameTargetItem = fileItem },
+                        onDeleteItem = { fileItem -> deleteTargetItem = fileItem },
+                        onDownloadFolderZip = { folder ->
+                            repoDetailViewModel.downloadFolderAsZip(folder, context) { zipFile ->
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    zipFile
+                                )
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Export Folder ZIP"))
                             }
-                            context.startActivity(Intent.createChooser(intent, "Export Folder ZIP"))
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     }
@@ -1459,7 +1481,7 @@ fun IssuesTabContent(repoDetailViewModel: RepoDetailViewModel) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ActionsTabContent(
     repoDetailViewModel: RepoDetailViewModel,
@@ -1468,86 +1490,111 @@ fun ActionsTabContent(
     val workflows by repoDetailViewModel.workflows.collectAsState()
     val workflowRuns by repoDetailViewModel.workflowRuns.collectAsState()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isRefreshing by remember { mutableStateOf(false) }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            Text("GitHub Actions Workflows", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        }
-
-        items(workflows) { wf ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
-                border = ButtonDefaults.outlinedButtonBorder(enabled = true)
-            ) {
-                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PlayCircleOutline, contentDescription = null, tint = GhAccentBlue)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(wf.name, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
-                        Text(wf.path, fontSize = 11.sp, color = GhTextSecondaryDark)
-                    }
-                    Button(onClick = { repoDetailViewModel.triggerWorkflow(wf.id) }, colors = ButtonDefaults.buttonColors(containerColor = GhAccentBlue)) {
-                        Text("Run", fontSize = 12.sp)
-                    }
-                }
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            isRefreshing = true
+            coroutineScope.launch {
+                repoDetailViewModel.refreshWorkflows()
+                isRefreshing = false
             }
-        }
+        },
+        modifier = Modifier.fillMaxSize()
+    ) {
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item {
+                Text("GitHub Actions Workflows", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
 
-        item {
-            Text("Recent Workflow Runs", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        }
-
-        items(workflowRuns) { run ->
-            var runMenuExpanded by remember { mutableStateOf(false) }
-            Box {
+            items(workflows) { wf ->
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { onShowLogViewer(run) },
-                            onLongClick = { runMenuExpanded = true }
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
                     border = ButtonDefaults.outlinedButtonBorder(enabled = true)
                 ) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (run.conclusion == "success") Icons.Default.CheckCircle else Icons.Default.Cancel,
-                            contentDescription = null,
-                            tint = if (run.conclusion == "success") GhSuccessGreen else GhErrorRed
-                        )
+                    Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlayCircleOutline, contentDescription = null, tint = GhAccentBlue)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(run.name ?: "Workflow Run #${run.runNumber}", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 13.sp)
-                            Text("branch: ${run.headBranch} • status: ${run.status}", fontSize = 11.sp, color = GhTextSecondaryDark)
+                            Text(wf.name, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
+                            Text(wf.path, fontSize = 11.sp, color = GhTextSecondaryDark)
+                        }
+                        Button(onClick = { repoDetailViewModel.triggerWorkflow(wf.id) }, colors = ButtonDefaults.buttonColors(containerColor = GhAccentBlue)) {
+                            Text("Run", fontSize = 12.sp)
                         }
                     }
                 }
+            }
 
-                DropdownMenu(
-                    expanded = runMenuExpanded,
-                    onDismissRequest = { runMenuExpanded = false },
-                    modifier = Modifier.background(GhSurfaceDark)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Copy Run Logs", color = Color.White) },
-                        onClick = {
-                            runMenuExpanded = false
-                            repoDetailViewModel.copyWorkflowLogsDirect(run.id, context)
-                        },
-                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Download Run Logs", color = GhSuccessGreen) },
-                        onClick = {
-                            runMenuExpanded = false
-                            repoDetailViewModel.downloadWorkflowRunLogs(run.id, run.runNumber, context)
-                        },
-                        leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
-                    )
+            item {
+                Text("Recent Workflow Runs", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+
+            items(workflowRuns) { run ->
+                var runMenuExpanded by remember { mutableStateOf(false) }
+                val isRunning = run.status == "in_progress" || run.status == "queued"
+
+                Box {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = { onShowLogViewer(run) },
+                                onLongClick = { runMenuExpanded = true }
+                            ),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (isRunning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = GhAccentBlue,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (run.conclusion == "success") Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                    contentDescription = null,
+                                    tint = if (run.conclusion == "success") GhSuccessGreen else GhErrorRed,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(run.name ?: "Workflow Run #${run.runNumber}", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 13.sp)
+                                Text("branch: ${run.headBranch} • status: ${run.status}", fontSize = 11.sp, color = GhTextSecondaryDark)
+                            }
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = runMenuExpanded,
+                        onDismissRequest = { runMenuExpanded = false },
+                        modifier = Modifier.background(GhSurfaceDark)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Copy Run Logs", color = Color.White) },
+                            onClick = {
+                                runMenuExpanded = false
+                                repoDetailViewModel.copyWorkflowLogsDirect(run.id, context)
+                            },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Download Run Logs", color = GhSuccessGreen) },
+                            onClick = {
+                                runMenuExpanded = false
+                                repoDetailViewModel.downloadWorkflowRunLogs(run.id, run.runNumber, context)
+                            },
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
+                        )
+                    }
                 }
             }
         }
