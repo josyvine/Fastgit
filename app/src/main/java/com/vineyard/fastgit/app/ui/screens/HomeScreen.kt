@@ -51,9 +51,14 @@ fun HomeScreen(
     // Retrieve the shared RepositoryViewModel scoped to the current ViewModelStoreOwner
     val repositoryViewModel: RepositoryViewModel = viewModel()
 
+    val repositoryStatusMessage by repositoryViewModel.statusMessage.collectAsState()
+    var repoToDelete by remember { mutableStateOf<Repository?>(null) }
+
     // Fallback callbacks to the local ViewModel if parameters are not provided
     val finalDeleteRepo = onDeleteRepo ?: { repo ->
-        repositoryViewModel.deleteRepository(repo.owner?.login ?: "developer", repo.name)
+        repositoryViewModel.deleteRepository(repo.owner?.login ?: "developer", repo.name) {
+            homeViewModel.loadHomeData()
+        }
     }
 
     val finalDownloadZipRepo = onDownloadZipRepo ?: { repo ->
@@ -72,121 +77,174 @@ fun HomeScreen(
 
     val coroutineScope = rememberCoroutineScope()
 
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = {
-            isRefreshing = true
-            coroutineScope.launch {
-                homeViewModel.loadHomeData()
-                isRefreshing = false
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GhBgDark)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                isRefreshing = true
+                coroutineScope.launch {
+                    homeViewModel.loadHomeData()
+                    isRefreshing = false
+                }
+            },
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Welcome Header
-            item {
-                Column {
-                    Text(
-                        text = "FastGit Mobile Workspace",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Manage GitHub repositories without terminal Git commands",
-                        fontSize = 13.sp,
-                        color = GhTextSecondaryDark
-                    )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(GhBgDark)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Welcome Header
+                item {
+                    Column {
+                        Text(
+                            text = "FastGit Mobile Workspace",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Manage GitHub repositories without terminal Git commands",
+                            fontSize = 13.sp,
+                            color = GhTextSecondaryDark
+                        )
+                    }
                 }
-            }
 
-            // Quick Action Cards Grid Row
-            item {
-                Text(
-                    text = "Quick Actions",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    QuickActionCard(
-                        title = "Create Repo",
-                        subtitle = "New GitHub project",
-                        icon = Icons.Default.AddCircle,
-                        color = GhSuccessGreen,
-                        modifier = Modifier.weight(1f),
-                        onClick = onCreateRepoClick
-                    )
-
-                    QuickActionCard(
-                        title = "Import Repo",
-                        subtitle = "From GitHub URL",
-                        icon = Icons.Default.CloudDownload,
-                        color = GhAccentBlue,
-                        modifier = Modifier.weight(1f),
-                        onClick = onImportRepoClick
-                    )
-                }
-            }
-
-            // Recent Repositories Section
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                // Quick Action Cards Grid Row
+                item {
                     Text(
-                        text = "Recent Repositories",
+                        text = "Quick Actions",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        QuickActionCard(
+                            title = "Create Repo",
+                            subtitle = "New GitHub project",
+                            icon = Icons.Default.AddCircle,
+                            color = GhSuccessGreen,
+                            modifier = Modifier.weight(1f),
+                            onClick = onCreateRepoClick
+                        )
+
+                        QuickActionCard(
+                            title = "Import Repo",
+                            subtitle = "From GitHub URL",
+                            icon = Icons.Default.CloudDownload,
+                            color = GhAccentBlue,
+                            modifier = Modifier.weight(1f),
+                            onClick = onImportRepoClick
+                        )
+                    }
+                }
+
+                // Recent Repositories Section
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Recent Repositories",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                if (isLoading && !isRefreshing) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = GhAccentBlue)
+                        }
+                    }
+                } else {
+                    items(recentRepos) { repo ->
+                        RepoCardItem(
+                            repo = repo,
+                            onClick = { onSelectRepo(repo) },
+                            onDeleteClick = { repoToDelete = repo }, // Show safety dialog warning
+                            onDownloadZipClick = { finalDownloadZipRepo(repo) }
+                        )
+                    }
+                }
+
+                // Recent Commits Activity Feed
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Recent Commits",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
                     )
                 }
-            }
 
-            if (isLoading && !isRefreshing) {
-                item {
-                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = GhAccentBlue)
-                    }
+                items(recentCommits) { commit ->
+                    CommitCardItem(commit = commit)
                 }
-            } else {
-                items(recentRepos) { repo ->
-                    RepoCardItem(
-                        repo = repo,
-                        onClick = { onSelectRepo(repo) },
-                        onDeleteClick = { finalDeleteRepo(repo) },
-                        onDownloadZipClick = { finalDownloadZipRepo(repo) }
+            }
+        }
+
+        // Repository Deletion Safety Confirmation Warning Dialog
+        if (repoToDelete != null) {
+            val target = repoToDelete!!
+            AlertDialog(
+                onDismissRequest = { repoToDelete = null },
+                title = { Text("Delete Repository?", color = Color.Red, fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        text = "Are you sure you want to delete '${target.name}'? This action is permanent and cannot be undone.",
+                        color = Color.White
                     )
-                }
-            }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val toDelete = target
+                            repoToDelete = null
+                            finalDeleteRepo(toDelete)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) {
+                        Text("Delete Permanently", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { repoToDelete = null }) {
+                        Text("Cancel", color = Color.White)
+                    }
+                },
+                containerColor = GhSurfaceDark
+            )
+        }
 
-            // Recent Commits Activity Feed
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Recent Commits",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
-            }
-
-            items(recentCommits) { commit ->
-                CommitCardItem(commit = commit)
+        // Home Tab Operations Feedback Snackbar (Collection)
+        repositoryStatusMessage?.let { msg ->
+            Snackbar(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp),
+                action = {
+                    TextButton(onClick = { repositoryViewModel.clearStatus() }) {
+                        Text("OK", color = GhAccentBlue)
+                    }
+                },
+                containerColor = GhSurfaceDark,
+                contentColor = Color.White
+            ) {
+                Text(msg)
             }
         }
     }
