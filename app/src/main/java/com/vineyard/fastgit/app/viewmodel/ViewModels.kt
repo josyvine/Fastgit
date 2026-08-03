@@ -51,7 +51,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun getOAuthAuthorizeUrl(): String {
         val clientId = tokenManager.getOAuthClientId()
         val redirectUri = Uri.encode(TokenManager.OAUTH_REDIRECT_URI)
-        val scope = Uri.encode("repo user read:org notifications gist")
+        val scope = Uri.encode("repo user read:org notifications gist delete_repo")
         return "https://github.com/login/oauth/authorize?client_id=$clientId&redirect_uri=$redirectUri&scope=$scope"
     }
 
@@ -105,7 +105,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 com.vineyard.fastgit.app.utils.AppLogger.i("DeviceFlow", "Requesting device code from GitHub...")
                 val response = RetrofitClient.getOAuthService().requestDeviceCode(
                     clientId = tokenManager.getOAuthClientId(),
-                    scope = "repo user read:org notifications gist"
+                    scope = "repo user read:org notifications gist delete_repo"
                 )
                 if (!response.deviceCode.isNullOrBlank() && !response.userCode.isNullOrBlank()) {
                     _deviceCodeState.value = response
