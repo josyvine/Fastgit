@@ -29,10 +29,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vineyard.fastgit.app.models.Commit
 import com.vineyard.fastgit.app.models.Repository
 import com.vineyard.fastgit.app.ui.theme.*
 import com.vineyard.fastgit.app.viewmodel.HomeViewModel
+import com.vineyard.fastgit.app.viewmodel.RepositoryViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,6 +47,24 @@ fun HomeScreen(
     onDeleteRepo: ((Repository) -> Unit)? = null,
     onDownloadZipRepo: ((Repository) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    // Retrieve the shared RepositoryViewModel scoped to the current ViewModelStoreOwner
+    val repositoryViewModel: RepositoryViewModel = viewModel()
+
+    // Fallback callbacks to the local ViewModel if parameters are not provided
+    val finalDeleteRepo = onDeleteRepo ?: { repo ->
+        repositoryViewModel.deleteRepository(repo.owner?.login ?: "developer", repo.name)
+    }
+
+    val finalDownloadZipRepo = onDownloadZipRepo ?: { repo ->
+        repositoryViewModel.downloadRepositoryAsZip(
+            repo.owner?.login ?: "developer",
+            repo.name,
+            repo.defaultBranch,
+            context
+        )
+    }
+
     val recentRepos by homeViewModel.recentRepos.collectAsState()
     val recentCommits by homeViewModel.recentCommits.collectAsState()
     val isLoading by homeViewModel.isLoading.collectAsState()
@@ -148,8 +168,8 @@ fun HomeScreen(
                     RepoCardItem(
                         repo = repo,
                         onClick = { onSelectRepo(repo) },
-                        onDeleteClick = if (onDeleteRepo != null) { { onDeleteRepo(repo) } } else null,
-                        onDownloadZipClick = if (onDownloadZipRepo != null) { { onDownloadZipRepo(repo) } } else null
+                        onDeleteClick = { finalDeleteRepo(repo) },
+                        onDownloadZipClick = { finalDownloadZipRepo(repo) }
                     )
                 }
             }
