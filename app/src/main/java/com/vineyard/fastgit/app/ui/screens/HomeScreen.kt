@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +33,9 @@ import com.vineyard.fastgit.app.models.Commit
 import com.vineyard.fastgit.app.models.Repository
 import com.vineyard.fastgit.app.ui.theme.*
 import com.vineyard.fastgit.app.viewmodel.HomeViewModel
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     homeViewModel: HomeViewModel,
@@ -43,106 +46,121 @@ fun HomeScreen(
     val recentRepos by homeViewModel.recentRepos.collectAsState()
     val recentCommits by homeViewModel.recentCommits.collectAsState()
     val isLoading by homeViewModel.isLoading.collectAsState()
+    var isRefreshing by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(GhBgDark)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    val coroutineScope = rememberCoroutineScope()
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            isRefreshing = true
+            coroutineScope.launch {
+                homeViewModel.loadHomeData()
+                isRefreshing = false
+            }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
-        // Welcome Header
-        item {
-            Column {
-                Text(
-                    text = "FastGit Mobile Workspace",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "Manage GitHub repositories without terminal Git commands",
-                    fontSize = 13.sp,
-                    color = GhTextSecondaryDark
-                )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(GhBgDark)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Welcome Header
+            item {
+                Column {
+                    Text(
+                        text = "FastGit Mobile Workspace",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Manage GitHub repositories without terminal Git commands",
+                        fontSize = 13.sp,
+                        color = GhTextSecondaryDark
+                    )
+                }
             }
-        }
 
-        // Quick Action Cards Grid Row
-        item {
-            Text(
-                text = "Quick Actions",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickActionCard(
-                    title = "Create Repo",
-                    subtitle = "New GitHub project",
-                    icon = Icons.Default.AddCircle,
-                    color = GhSuccessGreen,
-                    modifier = Modifier.weight(1f),
-                    onClick = onCreateRepoClick
-                )
-
-                QuickActionCard(
-                    title = "Import Repo",
-                    subtitle = "From GitHub URL",
-                    icon = Icons.Default.CloudDownload,
-                    color = GhAccentBlue,
-                    modifier = Modifier.weight(1f),
-                    onClick = onImportRepoClick
-                )
-            }
-        }
-
-        // Recent Repositories Section
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Quick Action Cards Grid Row
+            item {
                 Text(
-                    text = "Recent Repositories",
+                    text = "Quick Actions",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickActionCard(
+                        title = "Create Repo",
+                        subtitle = "New GitHub project",
+                        icon = Icons.Default.AddCircle,
+                        color = GhSuccessGreen,
+                        modifier = Modifier.weight(1f),
+                        onClick = onCreateRepoClick
+                    )
+
+                    QuickActionCard(
+                        title = "Import Repo",
+                        subtitle = "From GitHub URL",
+                        icon = Icons.Default.CloudDownload,
+                        color = GhAccentBlue,
+                        modifier = Modifier.weight(1f),
+                        onClick = onImportRepoClick
+                    )
+                }
+            }
+
+            // Recent Repositories Section
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Recent Repositories",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            if (isLoading && !isRefreshing) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = GhAccentBlue)
+                    }
+                }
+            } else {
+                items(recentRepos) { repo ->
+                    RepoCardItem(repo = repo, onClick = { onSelectRepo(repo) })
+                }
+            }
+
+            // Recent Commits Activity Feed
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Recent Commits",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White
                 )
             }
-        }
 
-        if (isLoading) {
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = GhAccentBlue)
-                }
+            items(recentCommits) { commit ->
+                CommitCardItem(commit = commit)
             }
-        } else {
-            items(recentRepos) { repo ->
-                RepoCardItem(repo = repo, onClick = { onSelectRepo(repo) })
-            }
-        }
-
-        // Recent Commits Activity Feed
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Recent Commits",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
-        }
-
-        items(recentCommits) { commit ->
-            CommitCardItem(commit = commit)
         }
     }
 }
