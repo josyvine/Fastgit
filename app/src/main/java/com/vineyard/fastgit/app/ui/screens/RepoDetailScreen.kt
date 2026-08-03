@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.vineyard.fastgit.app.models.*
 import com.vineyard.fastgit.app.ui.theme.*
@@ -203,100 +204,127 @@ fun RepoDetailScreen(
         }
     }
 
-    // Workflow Build Logs Overlay Dialog
+    // Workflow Build Logs Overlay Dialog (Custom Sized Dialog Overlay)
     if (selectedRunForLogs != null) {
         var showLogsContextMenu by remember { mutableStateOf(false) }
-        AlertDialog(
+        Dialog(
             onDismissRequest = {
                 selectedRunForLogs = null
                 repoDetailViewModel.clearWorkflowLogs()
             },
-            properties = DialogProperties(usePlatformDefaultWidth = false), // Relaxes standard platform alert width bounds [2]
-            modifier = Modifier
-                .fillMaxWidth(0.95f) // Sized to provide high readability on tablet/mobile screens
-                .fillMaxHeight(0.85f),
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Terminal, contentDescription = null, tint = GhAccentBlue)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Build Logs: Run #${selectedRunForLogs?.runNumber}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                }
-            },
-            text = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFF04060A), RoundedCornerShape(8.dp))
-                        .combinedClickable(
-                            onClick = { /* dismiss selections if any */ },
-                            onLongClick = { showLogsContextMenu = true }
-                        )
-                        .padding(8.dp)
-                ) {
-                    if (isLogsLoading) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = GhAccentBlue)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .fillMaxHeight(0.85f),
+                shape = RoundedCornerShape(12.dp),
+                color = GhSurfaceDark
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Compact Custom Header Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = null,
+                                tint = GhAccentBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Build Logs: Run #${selectedRunForLogs?.runNumber}",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
                         }
-                    } else {
-                        val verticalScroll = rememberScrollState()
-                        Text(
-                            text = workflowLogs ?: "Build parameters requested. Awaiting actions context...",
-                            color = Color(0xFFC9D1D9),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(verticalScroll)
-                        )
+                        IconButton(
+                            onClick = {
+                                selectedRunForLogs = null
+                                repoDetailViewModel.clearWorkflowLogs()
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close Logs",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
-                    DropdownMenu(
-                        expanded = showLogsContextMenu,
-                        onDismissRequest = { showLogsContextMenu = false },
-                        modifier = Modifier.background(GhSurfaceDark)
+                    // Monospace Log Console Area (Filling maximum canvas real estate)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                            .background(Color(0xFF04060A), RoundedCornerShape(8.dp))
+                            .combinedClickable(
+                                onClick = { /* dismiss selection states */ },
+                                onLongClick = { showLogsContextMenu = true }
+                            )
+                            .padding(12.dp)
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Copy Build Logs", color = Color.White) },
-                            onClick = {
-                                showLogsContextMenu = false
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("Build Logs", workflowLogs ?: "")
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "Build logs copied to clipboard!", Toast.LENGTH_SHORT).show()
-                            },
-                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Download Build Logs", color = GhSuccessGreen) },
-                            onClick = {
-                                showLogsContextMenu = false
-                                selectedRunForLogs?.let { run ->
-                                    repoDetailViewModel.downloadWorkflowRunLogs(run.id, run.runNumber, context)
-                                }
-                            },
-                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
-                        )
+                        if (isLogsLoading) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = GhAccentBlue)
+                            }
+                        } else {
+                            val verticalScroll = rememberScrollState()
+                            Text(
+                                text = workflowLogs ?: "Build parameters requested. Awaiting actions context...",
+                                color = Color(0xFFC9D1D9),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(verticalScroll)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showLogsContextMenu,
+                            onDismissRequest = { showLogsContextMenu = false },
+                            modifier = Modifier.background(GhSurfaceDark)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Copy Build Logs", color = Color.White) },
+                                onClick = {
+                                    showLogsContextMenu = false
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Build Logs", workflowLogs ?: "")
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Build logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Download Build Logs", color = GhSuccessGreen) },
+                                onClick = {
+                                    showLogsContextMenu = false
+                                    selectedRunForLogs?.let { run ->
+                                        repoDetailViewModel.downloadWorkflowRunLogs(run.id, run.runNumber, context)
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
+                            )
+                        }
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        selectedRunForLogs = null
-                        repoDetailViewModel.clearWorkflowLogs()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = GhAccentBlue)
-                ) {
-                    Text("Close", color = Color.White)
-                }
-            },
-            containerColor = GhSurfaceDark
-        )
+            }
+        }
     }
 
     // ZIP Upload Progress Dialog
@@ -737,19 +765,8 @@ fun ExplorerTabContent(
                         onRenameItem = { fileItem -> renameTargetItem = fileItem },
                         onDeleteItem = { fileItem -> deleteTargetItem = fileItem },
                         onDownloadFolderZip = { folder ->
-                            repoDetailViewModel.downloadFolderAsZip(folder, context) { zipFile ->
-                                val uri = androidx.core.content.FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    zipFile
-                                )
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/zip"
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Export Folder ZIP"))
-                            }
+                            // Directly invoke VM to download and save folder ZIP natively
+                            repoDetailViewModel.downloadFolderAsZip(folder, context)
                         }
                     )
                 }
