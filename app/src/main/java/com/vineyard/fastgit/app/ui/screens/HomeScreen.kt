@@ -41,7 +41,9 @@ fun HomeScreen(
     homeViewModel: HomeViewModel,
     onCreateRepoClick: () -> Unit,
     onImportRepoClick: () -> Unit,
-    onSelectRepo: (Repository) -> Unit
+    onSelectRepo: (Repository) -> Unit,
+    onDeleteRepo: ((Repository) -> Unit)? = null,
+    onDownloadZipRepo: ((Repository) -> Unit)? = null
 ) {
     val recentRepos by homeViewModel.recentRepos.collectAsState()
     val recentCommits by homeViewModel.recentCommits.collectAsState()
@@ -143,7 +145,12 @@ fun HomeScreen(
                 }
             } else {
                 items(recentRepos) { repo ->
-                    RepoCardItem(repo = repo, onClick = { onSelectRepo(repo) })
+                    RepoCardItem(
+                        repo = repo,
+                        onClick = { onSelectRepo(repo) },
+                        onDeleteClick = if (onDeleteRepo != null) { { onDeleteRepo(repo) } } else null,
+                        onDownloadZipClick = if (onDownloadZipRepo != null) { { onDownloadZipRepo(repo) } } else null
+                    )
                 }
             }
 
@@ -205,7 +212,8 @@ fun QuickActionCard(
 fun RepoCardItem(
     repo: Repository, 
     onClick: () -> Unit,
-    onDeleteClick: (() -> Unit)? = null
+    onDeleteClick: (() -> Unit)? = null,
+    onDownloadZipClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
@@ -308,6 +316,16 @@ fun RepoCardItem(
                 },
                 leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue) }
             )
+            if (onDownloadZipClick != null) {
+                DropdownMenuItem(
+                    text = { Text("Download Repository (ZIP)", color = Color.White) },
+                    onClick = {
+                        showMenu = false
+                        onDownloadZipClick()
+                    },
+                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = GhSuccessGreen) }
+                )
+            }
             if (onDeleteClick != null) {
                 DropdownMenuItem(
                     text = { Text("Delete Repository", color = Color.Red) },
