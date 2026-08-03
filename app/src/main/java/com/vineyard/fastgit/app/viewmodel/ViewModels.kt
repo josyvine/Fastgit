@@ -396,13 +396,14 @@ class RepositoryViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun deleteRepository(owner: String, name: String) {
+    fun deleteRepository(owner: String, name: String, onSuccess: (() -> Unit)? = null) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 if (tokenManager.isDemoMode()) {
                     _repositories.value = _repositories.value.filterNot { it.name == name && it.owner?.login == owner }
                     _statusMessage.value = "Repository '$name' deleted successfully (Demo Mode)!"
+                    onSuccess?.invoke()
                 } else {
                     val api = RetrofitClient.getService(tokenManager)
                     val response = api.deleteRepository(owner, name)
@@ -411,6 +412,7 @@ class RepositoryViewModel(application: Application) : AndroidViewModel(applicati
                         _repositories.value = _repositories.value.filterNot { it.name == name && it.owner?.login == owner }
                         _statusMessage.value = "Repository '$name' deleted successfully!"
                         fetchRepositories()
+                        onSuccess?.invoke()
                     } else {
                         val errorDetail = response.errorBody()?.string() ?: response.message()
                         _statusMessage.value = "Failed to delete: $errorDetail"
