@@ -479,7 +479,7 @@ class RepoDetailViewModel(
         }
     }
 
-    fun downloadFolderAsZip(folderItem: FileItem, context: Context, onZipReady: (File) -> Unit) {
+    fun downloadFolderAsZip(folderItem: FileItem, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 _isLoading.value = true
@@ -487,21 +487,30 @@ class RepoDetailViewModel(
             }
             
             try {
+                val safeName = if (folderItem.name.isNotBlank() && folderItem.name != "..") folderItem.name else repoName
+                val fileName = "$safeName.zip"
+
                 if (tokenManager.isDemoMode()) {
                     val demoItems = listOf(
                         FileItem(name = "AndroidManifest.xml", type = "file", content = "<?xml version=\"1.0\"?>\n<manifest/>"),
                         FileItem(name = "MainActivity.kt", type = "file", content = "package com.example\n\nclass MainActivity")
                     )
-                    val zip = DownloadUtils.createZipFromFolderItems(context, folderItem.name.ifEmpty { repoName }, demoItems)
+                    val zip = DownloadUtils.createZipFromFolderItems(context, safeName, demoItems)
+                    val bytes = zip.readBytes()
+                    val savedFile = DownloadUtils.saveBinaryToDownloads(context, "", fileName, bytes)
+                    zip.delete() // Cleanup cached temporary file
+
                     withContext(Dispatchers.Main) {
-                        _statusMessage.value = "Folder exported as ${zip.name}"
-                        onZipReady(zip)
+                        if (savedFile != null) {
+                            _statusMessage.value = "Folder saved successfully to: Downloads/FastGit/$fileName"
+                        } else {
+                            _statusMessage.value = "Failed to save ZIP to local storage"
+                        }
                     }
                     return@launch
                 }
 
                 val api = RetrofitClient.getService(tokenManager)
-                val safeName = if (folderItem.name.isNotBlank() && folderItem.name != "..") folderItem.name else repoName
 
                 // 1. Try downloading GitHub's native zipball if downloading root or parent folder
                 val isRootOrParent = folderItem.path.isBlank() || folderItem.name == ".." || folderItem.name == repoName || folderItem.name == "root"
@@ -510,17 +519,12 @@ class RepoDetailViewModel(
                         AppLogger.i("GitHubAPI", "Attempting GitHub zipball download for $owner/$repoName on branch ${_currentBranch.value}")
                         val zipResponse = api.downloadZipball(owner, repoName, _currentBranch.value)
                         if (zipResponse.isSuccessful && zipResponse.body() != null) {
-                            val targetFile = File(context.cacheDir, "$safeName.zip")
-                            zipResponse.body()!!.byteStream().use { input ->
-                                targetFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                            if (targetFile.length() > 0) {
-                                AppLogger.s("GitHubAPI", "Downloaded zipball successfully: ${targetFile.length()} bytes")
+                            val bytes = zipResponse.body()!!.bytes()
+                            val savedFile = DownloadUtils.saveBinaryToDownloads(context, "", fileName, bytes)
+                            if (savedFile != null) {
+                                AppLogger.s("GitHubAPI", "Downloaded zipball successfully and saved to local storage.")
                                 withContext(Dispatchers.Main) {
-                                    _statusMessage.value = "Exported $safeName.zip (${targetFile.length() / 1024} KB)"
-                                    onZipReady(targetFile)
+                                    _statusMessage.value = "Exported $fileName successfully to Downloads/FastGit"
                                 }
                                 return@launch
                             }
@@ -533,10 +537,16 @@ class RepoDetailViewModel(
                 // 2. Recursive file fetcher for specific subfolder or fallback
                 val resolvedFiles = fetchFolderFilesRecursively(api, owner, repoName, folderItem.path, _currentBranch.value)
                 val zip = DownloadUtils.createZipFromFolderItems(context, safeName, resolvedFiles)
+                val bytes = zip.readBytes()
+                val savedFile = DownloadUtils.saveBinaryToDownloads(context, "", fileName, bytes)
+                zip.delete() // Cleanup cached temporary file
                 
                 withContext(Dispatchers.Main) {
-                    _statusMessage.value = "Folder exported as ${zip.name}"
-                    onZipReady(zip)
+                    if (savedFile != null) {
+                        _statusMessage.value = "Folder saved successfully to: Downloads/FastGit/$fileName"
+                    } else {
+                        _statusMessage.value = "Failed to save ZIP to local storage"
+                    }
                 }
 
             } catch (e: Exception) {
@@ -1238,4 +1248,3 @@ fun getSampleIssues(): List<Issue> {
         Issue(id = 2, number = 9, title = "ZIP upload percentage counter animation smooth scroll", state = "open", user = User(login = "octocat"), createdAt = "Yesterday")
     )
 }
-
