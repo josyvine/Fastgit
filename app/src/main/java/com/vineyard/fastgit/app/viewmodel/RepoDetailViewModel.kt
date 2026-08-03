@@ -18,6 +18,7 @@ import com.vineyard.fastgit.app.utils.DownloadUtils
 import com.vineyard.fastgit.app.utils.TokenManager
 import com.vineyard.fastgit.app.utils.ZipUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,7 @@ class RepoDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val tokenManager = TokenManager(application)
+    private var pollingJob: Job? = null
 
     // Repository state
     private val _repository = MutableStateFlow<Repository?>(null)
@@ -169,6 +171,14 @@ class RepoDetailViewModel(
         navigateToDirectory(path)
     }
 
+    fun refreshExplorer() {
+        loadContents(_currentPath.value)
+    }
+
+    fun refreshWorkflows() {
+        loadWorkflows()
+    }
+
     fun navigateToDirectory(path: String) {
         _currentPath.value = path
         if (tokenManager.isDemoMode()) {
@@ -279,17 +289,15 @@ class RepoDetailViewModel(
     fun downloadSingleFileToDevice(fileItem: FileItem, content: String, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val fastGitDir = File(downloadsDir, "FastGit")
-                if (!fastGitDir.exists()) {
-                    fastGitDir.mkdirs()
-                }
-                val targetFile = File(fastGitDir, fileItem.name)
-                targetFile.writeText(content)
-
+                // Call our MediaStore file helper to resolve Android Q+ ENOENT file creation issues
+                val targetFile = DownloadUtils.saveTextToDownloads(context, "", fileItem.name, content)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Saved successfully to: Downloads/FastGit/${fileItem.name}", Toast.LENGTH_LONG).show()
-                    _statusMessage.value = "Downloaded: Downloads/FastGit/${fileItem.name}"
+                    if (targetFile != null) {
+                        Toast.makeText(context, "Saved successfully to: Downloads/FastGit/${fileItem.name}", Toast.LENGTH_LONG).show()
+                        _statusMessage.value = "Downloaded: Downloads/FastGit/${fileItem.name}"
+                    } else {
+                        Toast.makeText(context, "Failed to download: MediaStore write error", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 AppLogger.e("DownloadFile", "Error saving editor file: ${e.message}", e)
@@ -1230,3 +1238,4 @@ fun getSampleIssues(): List<Issue> {
         Issue(id = 2, number = 9, title = "ZIP upload percentage counter animation smooth scroll", state = "open", user = User(login = "octocat"), createdAt = "Yesterday")
     )
 }
+
