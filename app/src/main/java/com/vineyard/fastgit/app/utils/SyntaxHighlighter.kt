@@ -28,55 +28,68 @@ object SyntaxHighlighter {
         "by", "in", "is", "where", "suspend", "coroutine", "flow", "state", "recompose", "true", "false", "null"
     )
 
+    // Precompiled high-speed parsing pattern executing sequentially across the document stream
+    private val COMBINED_PATTERN = Pattern.compile(
+        "(//[^\\r\\n]*|/\\*[\\s\\S]*?\\*/|#[^\\r\\n]*)" +                      // Group 1: Comments
+        "|(\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\"|'[^'\\\\]*(?:\\\\.[^'\\\\]*)*')" +  // Group 2: Strings
+        "|\\b(" + KEYWORDS.joinToString("|") + ")\\b" +                         // Group 3: Keywords
+        "|(@\\w+)" +                                                            // Group 4: Annotations
+        "|(\\b\\d+\\b)"                                                         // Group 5: Numbers
+    )
+
     fun highlight(code: String, fileName: String = ""): AnnotatedString {
-        return buildAnnotatedString {
-            val lines = code.split("\n")
-            lines.forEachIndexed { index, line ->
-                highlightLine(line)
-                if (index < lines.size - 1) {
-                    append("\n")
-                }
-            }
-        }
-    }
+        val builder = AnnotatedString.Builder()
+        val matcher = COMBINED_PATTERN.matcher(code)
+        var lastIndex = 0
 
-    private fun AnnotatedString.Builder.highlightLine(line: String) {
-        if (line.trimStart().startsWith("//") || line.trimStart().startsWith("#") || line.trimStart().startsWith("<!--")) {
-            withStyle(SpanStyle(color = COMMENT_COLOR, fontFamily = FontFamily.Monospace)) {
-                append(line)
-            }
-            return
-        }
+        while (matcher.find()) {
+            val start = matcher.start()
+            val end = matcher.end()
 
-        val tokens = line.split(Regex("(?<=[\\s(),.<>:;{}\\[\\]=+\\-*/%&|^!?])|(?=[\\s(),.<>:;{}\\[\\]=+\\-*/%&|^!?])"))
-        for (token in tokens) {
+            // Append unstyled text segments prior to matching index
+            if (start > lastIndex) {
+                builder.append(code.substring(lastIndex, start))
+            }
+
+            // Style matching segments based on capture group indices
             when {
-                KEYWORDS.contains(token.trim()) -> {
-                    withStyle(SpanStyle(color = KEYWORD_COLOR, fontFamily = FontFamily.Monospace)) {
-                        append(token)
+                matcher.group(1) != null -> { // Comments
+                    builder.withStyle(SpanStyle(color = COMMENT_COLOR, fontFamily = FontFamily.Monospace)) {
+                        append(code.substring(start, end))
                     }
                 }
-                token.startsWith("\"") || token.endsWith("\"") || token.startsWith("'") || token.endsWith("'") -> {
-                    withStyle(SpanStyle(color = STRING_COLOR, fontFamily = FontFamily.Monospace)) {
-                        append(token)
+                matcher.group(2) != null -> { // Strings
+                    builder.withStyle(SpanStyle(color = STRING_COLOR, fontFamily = FontFamily.Monospace)) {
+                        append(code.substring(start, end))
                     }
                 }
-                token.startsWith("@") -> {
-                    withStyle(SpanStyle(color = ANNOTATION_COLOR, fontFamily = FontFamily.Monospace)) {
-                        append(token)
+                matcher.group(3) != null -> { // Keywords
+                    builder.withStyle(SpanStyle(color = KEYWORD_COLOR, fontFamily = FontFamily.Monospace)) {
+                        append(code.substring(start, end))
                     }
                 }
-                token.matches(Regex("\\d+")) -> {
-                    withStyle(SpanStyle(color = NUMBER_COLOR, fontFamily = FontFamily.Monospace)) {
-                        append(token)
+                matcher.group(4) != null -> { // Annotations
+                    builder.withStyle(SpanStyle(color = ANNOTATION_COLOR, fontFamily = FontFamily.Monospace)) {
+                        append(code.substring(start, end))
+                    }
+                }
+                matcher.group(5) != null -> { // Numbers
+                    builder.withStyle(SpanStyle(color = NUMBER_COLOR, fontFamily = FontFamily.Monospace)) {
+                        append(code.substring(start, end))
                     }
                 }
                 else -> {
-                    withStyle(SpanStyle(color = DEFAULT_TEXT_COLOR, fontFamily = FontFamily.Monospace)) {
-                        append(token)
-                    }
+                    builder.append(code.substring(start, end))
                 }
             }
+            lastIndex = end
         }
+
+        // Append remaining unstyled text segments
+        if (lastIndex < code.length) {
+            builder.append(code.substring(lastIndex))
+        }
+
+        return builder.toAnnotatedString()
     }
 }
