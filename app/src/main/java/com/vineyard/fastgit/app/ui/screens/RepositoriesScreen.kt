@@ -5,10 +5,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,7 +22,9 @@ import androidx.compose.ui.unit.sp
 import com.vineyard.fastgit.app.models.Repository
 import com.vineyard.fastgit.app.ui.theme.*
 import com.vineyard.fastgit.app.viewmodel.RepositoryViewModel
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepositoriesScreen(
     repositoryViewModel: RepositoryViewModel,
@@ -36,7 +41,9 @@ fun RepositoriesScreen(
     var showCreateDialog by remember { mutableStateOf(showCreateDialogInitially) }
     var showImportDialog by remember { mutableStateOf(showImportDialogInitially) }
     var repoToDelete by remember { mutableStateOf<Repository?>(null) }
+    var isRefreshing by remember { mutableStateOf(false) }
 
+    val coroutineScope = rememberCoroutineScope()
     val filterOptions = listOf("All", "Public", "Private", "Sources", "Forks")
 
     val filteredRepos = repositories.filter { repo ->
@@ -141,26 +148,49 @@ fun RepositoriesScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Repos List
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = GhAccentBlue)
-                }
-            } else if (filteredRepos.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No matching repositories found.", color = GhTextSecondaryDark)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+            // Repos List Container
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = {
+                        isRefreshing = true
+                        coroutineScope.launch {
+                            repositoryViewModel.fetchRepositories()
+                            isRefreshing = false
+                        }
+                    },
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredRepos) { repo ->
-                        RepoCardItem(
-                            repo = repo, 
-                            onClick = { onSelectRepo(repo) },
-                            onDeleteClick = { repoToDelete = repo }
-                        )
+                    if (isLoading && !isRefreshing) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = GhAccentBlue)
+                        }
+                    } else if (filteredRepos.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()), // Enables pull-to-refresh on empty lists
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No matching repositories found.", color = GhTextSecondaryDark)
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(filteredRepos) { repo ->
+                                RepoCardItem(
+                                    repo = repo, 
+                                    onClick = { onSelectRepo(repo) },
+                                    onDeleteClick = { repoToDelete = repo }
+                                )
+                            }
+                        }
                     }
                 }
             }
