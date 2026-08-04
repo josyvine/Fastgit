@@ -212,7 +212,7 @@ class RepoDetailViewModel(
                     if (currentTree.isEmpty()) {
                         _treeItems.value = contents
                     } else {
-                        val updated = currentTree.map { copyTreeWithUpdatedChildren(it, path, contents) }
+                        val updated = updateTreeWithContents(currentTree, path, contents)
                         _treeItems.value = updated
                     }
                 }
@@ -237,13 +237,82 @@ class RepoDetailViewModel(
                 AppLogger.i("GitHubAPI", "Fetching subfolder contents for '$dirPath'")
                 val api = RetrofitClient.getService(tokenManager)
                 val contents = api.getContents(owner, repoName, dirPath, _currentBranch.value)
-                val updated = _treeItems.value.map { copyTreeWithUpdatedChildren(it, dirPath, contents) }
+                val updated = updateTreeWithContents(_treeItems.value, dirPath, contents)
                 _treeItems.value = updated
                 AppLogger.s("GitHubAPI", "Populated ${contents.size} children for subfolder '$dirPath'")
             } catch (e: Exception) {
                 AppLogger.e("GitHubAPI", "Error fetching subfolder '$dirPath': ${e.message}", e)
             }
         }
+    }
+
+    private fun updateTreeWithContents(
+        currentTree: List<FileItem>,
+        targetPath: String,
+        contents: List<FileItem>
+    ): List<FileItem> {
+        if (targetPath.isEmpty()) return contents
+
+        val segments = targetPath.split("/").filter { it.isNotEmpty() }
+        return updateTreeSegmentsRecursively(currentTree, segments, 0, contents)
+    }
+
+    private fun updateTreeSegmentsRecursively(
+        nodes: List<FileItem>,
+        segments: List<String>,
+        segmentIndex: Int,
+        newChildren: List<FileItem>
+    ): List<FileItem> {
+        if (segmentIndex >= segments.size) return nodes
+
+        val currentSegmentName = segments[segmentIndex]
+        val currentSegmentPath = segments.take(segmentIndex + 1).joinToString("/")
+
+        // Check if the current segment already exists in the list
+        val existingNodeIndex = nodes.indexOfFirst { it.name == currentSegmentName && it.type == "dir" }
+
+        val mutableNodes = nodes.toMutableList()
+
+        if (existingNodeIndex != -1) {
+            val existingNode = mutableNodes[existingNodeIndex]
+            if (segmentIndex == segments.size - 1) {
+                // We reached the final target directory segment. Graft the newly fetched contents.
+                mutableNodes[existingNodeIndex] = existingNode.copy(children = newChildren.toMutableList())
+            } else {
+                // Intermediate segment. Recursively traverse down.
+                val updatedChildren = updateTreeSegmentsRecursively(
+                    existingNode.children,
+                    segments,
+                    segmentIndex + 1,
+                    newChildren
+                )
+                mutableNodes[existingNodeIndex] = existingNode.copy(children = updatedChildren.toMutableList())
+            }
+        } else {
+            // Segment doesn't exist. We must create the missing directory node to preserve tree structure.
+            val isFinalSegment = segmentIndex == segments.size - 1
+            val createdNode = FileItem(
+                name = currentSegmentName,
+                path = currentSegmentPath,
+                type = "dir",
+                children = if (isFinalSegment) newChildren.toMutableList() else mutableListOf()
+            )
+
+            if (!isFinalSegment) {
+                // Populate intermediate descendants recursively
+                val populatedChildren = updateTreeSegmentsRecursively(
+                    createdNode.children,
+                    segments,
+                    segmentIndex + 1,
+                    newChildren
+                )
+                mutableNodes.add(createdNode.copy(children = populatedChildren.toMutableList()))
+            } else {
+                mutableNodes.add(createdNode)
+            }
+        }
+
+        return mutableNodes
     }
 
     private fun copyTreeWithUpdatedChildren(node: FileItem, targetPath: String, newChildren: List<FileItem>): FileItem {
