@@ -583,7 +583,7 @@ class RepoDetailViewModel(
                     try {
                         val single = api.getSingleFileContent(owner, repo, item.path, branch)
                         val bytes = if (single.encoding == "base64" && single.content != null) {
-                            val clean B64 = single.content.replace("\n", "").replace("\r", "")
+                            val cleanB64 = single.content.replace("\n", "").replace("\r", "")
                             Base64.decode(cleanB64, Base64.DEFAULT)
                         } else {
                             single.content?.toByteArray(Charsets.UTF_8) ?: ByteArray(0)
@@ -1006,7 +1006,9 @@ class RepoDetailViewModel(
                                                 "in_progress" -> "⟳"
                                                 else -> "○"
                                             }
-                                            val conclusionText = if (step.conclusion != null) " (${step.conclusion})" else ""
+                                            val conclusionText = if (step.conclusion != null) {
+                                                " (${step.conclusion})"
+                                            } else ""
                                             combinedLogs.append("$statusIcon ${step.number}. ${step.name} - ${step.status}$conclusionText\n")
                                         }
                                     }
