@@ -1169,3 +1169,143 @@ data class WorkflowStep(
     val conclusion: String?, // "success", "failure", "cancelled"
     val number: Int
 )
+
+// Builds a nested FileItem hierarchy from scanned extracted ZIP files
+fun buildFileTreeFromScannedFiles(scannedFiles: List<ZipUtils.ExtractedFileInfo>): List<FileItem> {
+    if (scannedFiles.isEmpty()) return emptyList()
+
+    // Determine if all paths share a single top-level directory prefix (e.g., "ProjectName-main/")
+    val firstSegments = scannedFiles.mapNotNull {
+        val parts = it.relativePath.split('/')
+        if (parts.size > 1) parts[0] else null
+    }
+    val commonRoot = if (firstSegments.isNotEmpty() && firstSegments.distinct().size == 1 && scannedFiles.all { it.relativePath.contains('/') }) {
+        firstSegments.first()
+    } else null
+
+    val rootList = mutableListOf<FileItem>()
+
+    fun getOrCreateDir(parentList: MutableList<FileItem>, dirName: String, fullPath: String): FileItem {
+        var dir = parentList.find { it.name == dirName && it.type == "dir" }
+        if (dir == null) {
+            dir = FileItem(
+                name = dirName,
+                path = fullPath,
+                type = "dir",
+                children = mutableListOf()
+            )
+            parentList.add(dir)
+        }
+        return dir
+    }
+
+    for (file in scannedFiles) {
+        val cleanPath = if (commonRoot != null && file.relativePath.startsWith("$commonRoot/")) {
+            file.relativePath.removePrefix("$commonRoot/")
+        } else {
+            file.relativePath
+        }
+
+        val parts = cleanPath.split('/')
+        var currentParentList = rootList
+        var currentPathAcc = ""
+
+        for (i in 0 until parts.size - 1) {
+            val part = parts[i]
+            currentPathAcc = if (currentPathAcc.isEmpty()) part else "$currentPathAcc/$part"
+            val dirNode = getOrCreateDir(currentParentList, part, currentPathAcc)
+            currentParentList = dirNode.children
+        }
+
+        // Add file node
+        val fileName = parts.last()
+        val filePath = cleanPath
+        val decodedContent = try {
+            val bytes = Base64.decode(file.contentBase64, Base64.DEFAULT)
+            String(bytes)
+        } catch (e: Exception) {
+            "// Binary content: ${file.relativePath}"
+        }
+
+        val fileNode = FileItem(
+            name = fileName,
+            path = filePath,
+            type = "file",
+            size = decodedContent.length.toLong(),
+            content = decodedContent
+        )
+        currentParentList.add(fileNode)
+    }
+
+    return rootList
+}
+
+// Sample Tree Generator for Android Project Structure in Explorer View
+fun getSampleAndroidProjectTree(): List<FileItem> {
+    return listOf(
+        FileItem(
+            name = ".github",
+            path = ".github",
+            type = "dir",
+            children = mutableListOf(
+                FileItem(name = "workflows", path = ".github/workflows", type = "dir", children = mutableListOf(
+                    FileItem(name = "android.yml", path = ".github/workflows/android.yml", type = "file", content = "name: Android CI\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n    - uses: actions/checkout@v3\n    - name: set up JDK\n      uses: actions/setup-java@v3\n    - name: Build with Gradle\n      run: ./gradlew build")
+                ))
+            )
+        ),
+        FileItem(
+            name = "app",
+            path = "app",
+            type = "dir",
+            children = mutableListOf(
+                FileItem(
+                    name = "src",
+                    path = "app/src",
+                    type = "dir",
+                    children = mutableListOf(
+                        FileItem(
+                            name = "main",
+                            path = "app/src/main",
+                            type = "dir",
+                            children = mutableListOf(
+                                FileItem(name = "AndroidManifest.xml", path = "app/src/main/AndroidManifest.xml", type = "file", content = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <application\n        android:allowBackup=\"true\"\n        android:label=\"@string/app_name\"\n        android:supportsRtl=\"true\">\n        <activity android:name=\".MainActivity\" android:exported=\"true\"/>\n    </application>\n</manifest>"),
+                                FileItem(
+                                    name = "java",
+                                    path = "app/src/main/java",
+                                    type = "dir",
+                                    children = mutableListOf(
+                                        FileItem(name = "MainActivity.kt", path = "app/src/main/java/MainActivity.kt", type = "file", content = "package com.vineyard.fastgit.app\n\nimport android.os.Bundle\nimport androidx.activity.ComponentActivity\n\nclass MainActivity : ComponentActivity() {\n    override fun onCreate(savedInstanceState: Bundle?) {\n        super.onCreate(savedInstanceState)\n        println(\"Welcome to FastGit\")\n    }\n}")
+                                    )
+                                ),
+                                FileItem(name = "res", path = "app/src/main/res", type = "dir", children = mutableListOf(
+                                    FileItem(name = "values", path = "app/src/main/res/values", type = "dir", children = mutableListOf(
+                                        FileItem(name = "strings.xml", path = "app/src/main/res/values/strings.xml", type = "file", content = "<resources>\n    <string name=\"app_name\">FastGit</string>\n</resources>")
+                                    ))
+                                ))
+                            )
+                        )
+                    )
+                ),
+                FileItem(name = "build.gradle.kts", path = "app/build.gradle.kts", type = "file", content = "plugins {\n    alias(libs.plugins.android.application)\n    alias(libs.plugins.kotlin.compose)\n}\n\nandroid {\n    namespace = \"com.vineyard.fastgit.app\"\n    compileSdk = 36\n}")
+            )
+        ),
+        FileItem(name = "build.gradle.kts", path = "build.gradle.kts", type = "file", content = "// Top-level build file\nplugins {\n    alias(libs.plugins.android.application) apply false\n}"),
+        FileItem(name = "settings.gradle.kts", path = "settings.gradle.kts", type = "file", content = "rootProject.name = \"FastGit\"\ninclude(\":app\")"),
+        FileItem(name = "README.md", path = "README.md", type = "file", content = "# FastGit Android Client\n\nA modern GitHub repository manager for Android developers.")
+    )
+}
+
+fun getSamplePullRequests(): List<PullRequest> {
+    return listOf(
+        PullRequest(id = 1, number = 4, title = "Refactor file explorer tree nodes for fast collapse", state = "open", user = User(login = "developer_android"), createdAt = "2 days ago"),
+        PullRequest(id = 2, number = 3, title = "Add OAuth Token auto-refresh support", state = "closed", user = User(login = "octocat"), createdAt = "1 week ago", merged = true)
+    )
+}
+
+fun getSampleIssues(): List<Issue> {
+    return listOf(
+        Issue(id = 1, number = 12, title = "Support syntax highlighting for Gradle KTS files", state = "open", user = User(login = "developer_android"), createdAt = "3 hours ago"),
+        Issue(id = 2, number = 9, title = "ZIP upload percentage counter animation smooth scroll", state = "open", user = User(login = "octocat"), createdAt = "Yesterday")
+    )
+}
+
