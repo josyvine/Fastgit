@@ -116,6 +116,33 @@ class RepoDetailViewModel(
         loadRepositoryDetails()
     }
 
+    private fun mergePaths(currentPath: String, fileName: String): String {
+        if (currentPath.isBlank()) return fileName
+        val cleanCurrent = currentPath.trim('/').replace('\\', '/')
+        val cleanFile = fileName.trim('/').replace('\\', '/')
+
+        val currentSegments = cleanCurrent.split('/')
+        val fileSegments = cleanFile.split('/')
+
+        var overlapCount = 0
+        val maxPossibleOverlap = minOf(currentSegments.size, fileSegments.size)
+
+        for (i in 1..maxPossibleOverlap) {
+            val subCurrent = currentSegments.takeLast(i)
+            val subFile = fileSegments.take(i)
+            if (subCurrent == subFile) {
+                overlapCount = i
+            }
+        }
+
+        return if (overlapCount > 0) {
+            val mergedSegments = currentSegments + fileSegments.drop(overlapCount)
+            mergedSegments.joinToString("/")
+        } else {
+            "$cleanCurrent/$cleanFile"
+        }
+    }
+
     fun loadRepositoryDetails() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -414,7 +441,7 @@ class RepoDetailViewModel(
     }
 
     fun createNewFile(fileName: String, initialContent: String, commitMessage: String) {
-        val fullPath = if (_currentPath.value.isBlank()) fileName else "${_currentPath.value}/$fileName"
+        val fullPath = mergePaths(_currentPath.value, fileName)
         viewModelScope.launch {
             _isLoading.value = true
             AppLogger.i("FileTree", "Creating new file '$fullPath'")
