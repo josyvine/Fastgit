@@ -205,6 +205,21 @@ interface GitHubApiService {
         @Path("job_id") jobId: Long
     ): ResponseBody
 
+    // Repository Secrets Management API
+    @GET("repos/{owner}/{repo}/actions/secrets/public-key")
+    suspend fun getActionsPublicKey(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): PublicKeyResponse
+
+    @PUT("repos/{owner}/{repo}/actions/secrets/{secret_name}")
+    suspend fun createOrUpdateActionsSecret(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("secret_name") secretName: String,
+        @Body request: CreateSecretRequest
+    ): Response<Unit>
+
     // Releases
     @GET("repos/{owner}/{repo}/releases")
     suspend fun getReleases(
@@ -263,4 +278,14 @@ data class GitTreeEntry(
     val sha: String,
     val size: Long? = null,
     val url: String
+)
+
+data class PublicKeyResponse(
+    val key_id: String,
+    val key: String
+)
+
+data class CreateSecretRequest(
+    val encrypted_value: String,
+    val key_id: String
 )
