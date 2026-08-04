@@ -574,12 +574,13 @@ fun ExplorerTabContent(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // View Mode Switcher Pills (Tree vs Folder View)
+            // View Mode Switcher Pills (Tree vs Folder View) and Local Search Layout
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // View Mode selection controls
                 Row(
                     modifier = Modifier
                         .background(GhSurfaceDark, RoundedCornerShape(8.dp))
@@ -636,12 +637,88 @@ fun ExplorerTabContent(
                     }
                 }
 
-                if (explorerMode == 0) {
-                    Text(
-                        text = "Tap arrow to expand inline",
-                        fontSize = 10.sp,
-                        color = GhTextSecondaryDark
-                    )
+                // High-performance search explorer logic layout replacing static label
+                var isLocalSearchActive by remember { mutableStateOf(false) }
+                var localSearchQuery by remember { mutableStateOf("") }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp)
+                ) {
+                    if (isLocalSearchActive) {
+                        OutlinedTextField(
+                            value = localSearchQuery,
+                            onValueChange = { localSearchQuery = it },
+                            placeholder = { Text("Search file/folder...", fontSize = 11.sp, color = GhTextSecondaryDark) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedContainerColor = GhSurfaceDark,
+                                unfocusedContainerColor = GhSurfaceDark,
+                                focusedBorderColor = GhAccentBlue,
+                                unfocusedBorderColor = Color.Transparent
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp),
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            if (localSearchQuery.isNotBlank()) {
+                                                repoDetailViewModel.searchAndJumpToPath(localSearchQuery)
+                                            }
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Submit Search",
+                                            tint = GhAccentBlue,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            isLocalSearchActive = false
+                                            localSearchQuery = ""
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Cancel Search",
+                                            tint = Color.Red,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                    } else {
+                        IconButton(
+                            onClick = { isLocalSearchActive = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search Directory",
+                                tint = GhAccentBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        if (explorerMode == 0) {
+                            Text(
+                                text = "Tap arrow to expand inline",
+                                fontSize = 10.sp,
+                                color = GhTextSecondaryDark,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1699,3 +1776,4 @@ fun RepoSettingsTabContent(repoDetailViewModel: RepoDetailViewModel, onBack: () 
         }
     }
 }
+
