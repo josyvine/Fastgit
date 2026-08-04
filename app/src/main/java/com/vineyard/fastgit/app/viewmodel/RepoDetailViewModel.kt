@@ -1205,23 +1205,60 @@ class RepoDetailViewModel(
     fun searchAndJumpToPath(query: String) {
         if (query.isBlank()) return
         viewModelScope.launch {
-            val matchedItem = findItemInTreeRecursively(_treeItems.value, query)
-            if (matchedItem != null) {
-                val targetPath = if (matchedItem.type == "dir") {
-                    matchedItem.path
-                } else {
-                    // For files, navigate to the parent folder so the file is visible in the list
-                    if (matchedItem.path.contains("/")) {
-                        matchedItem.path.substringBeforeLast("/")
+            _isLoading.value = true
+            _statusMessage.value = "Searching deeply for '$query'..."
+            try {
+                if (tokenManager.isDemoMode()) {
+                    val fullTree = getSampleAndroidProjectTree()
+                    val matchedItem = findItemInTreeRecursively(fullTree, query)
+                    if (matchedItem != null) {
+                        val targetPath = if (matchedItem.type == "dir") {
+                            matchedItem.path
+                        } else {
+                            if (matchedItem.path.contains("/")) {
+                                matchedItem.path.substringBeforeLast("/")
+                            } else {
+                                ""
+                            }
+                        }
+                        AppLogger.s("SearchExplorer", "Found match: '${matchedItem.path}'. Navigating to '$targetPath'")
+                        navigateToDirectory(targetPath)
                     } else {
-                        "" // Root
+                        _statusMessage.value = "No match found for '$query'"
+                    }
+                } else {
+                    val api = RetrofitClient.getService(tokenManager)
+                    val branchRef = _currentBranch.value
+                    AppLogger.i("GitHubAPI", "Fetching recursive tree for branch: $branchRef")
+                    val response = api.getRecursiveTree(owner, repoName, branchRef)
+                    
+                    val matchedEntry = response.tree.find { entry ->
+                        val name = entry.path.substringAfterLast('/')
+                        name.contains(query, ignoreCase = true)
+                    }
+                    
+                    if (matchedEntry != null) {
+                        val targetPath = if (matchedEntry.type == "tree") {
+                            matchedEntry.path
+                        } else {
+                            if (matchedEntry.path.contains("/")) {
+                                matchedEntry.path.substringBeforeLast("/")
+                            } else {
+                                ""
+                            }
+                        }
+                        AppLogger.s("SearchExplorer", "Deep search found: '${matchedEntry.path}'. Navigating to '$targetPath'")
+                        navigateToDirectory(targetPath)
+                    } else {
+                        _statusMessage.value = "No match found for '$query'"
+                        AppLogger.i("SearchExplorer", "No deep match found for query: '$query'")
                     }
                 }
-                AppLogger.s("SearchExplorer", "Found match: '${matchedItem.path}'. Navigating to '$targetPath'")
-                navigateToDirectory(targetPath)
-            } else {
-                _statusMessage.value = "No match found for '$query'"
-                AppLogger.i("SearchExplorer", "No file or folder matching '$query' found.")
+            } catch (e: Exception) {
+                AppLogger.e("SearchExplorer", "Deep search failed: ${e.message}", e)
+                _statusMessage.value = "Search failed: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -1401,4 +1438,3 @@ fun getSampleIssues(): List<Issue> {
         Issue(id = 2, number = 9, title = "ZIP upload percentage counter animation smooth scroll", state = "open", user = User(login = "octocat"), createdAt = "Yesterday")
     )
 }
-
