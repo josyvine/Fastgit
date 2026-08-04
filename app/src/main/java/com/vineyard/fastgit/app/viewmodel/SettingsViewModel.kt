@@ -275,8 +275,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             // XSalsa20-Poly1305 encryption, and outputs the ciphertext as a hex-encoded string.
             val encryptedHex = lazySodium.cryptoBoxSealEasy(secret, Key.fromBytes(recipientPublicKeyBytes))
             
-            // 4. Parse the hexadecimal string back to standard raw bytes
-            val cipherBytes = lazySodium.toBin(encryptedHex)
+            // 4. Parse the hexadecimal string back to standard raw bytes using the correct method
+            val cipherBytes = lazySodium.sodiumHex2Bin(encryptedHex)
             
             // 5. Encode the final ciphertext bytes back to a Base64 string to match the format required by GitHub
             Base64.encodeToString(cipherBytes, Base64.NO_WRAP)
