@@ -491,8 +491,6 @@ object Curve25519X {
     }
 
     private fun pack(out: ByteArray, x: LongArray) {
-        // Changed initialization to guarantee tx is allocated with 16 elements.
-        // This provides valid array index space up to index 15, resolving the out-of-bounds crash.
         val tx = LongArray(16)
         System.arraycopy(x, 0, tx, 0, minOf(x.size, 10))
         carry(tx)
@@ -553,26 +551,30 @@ object XSalsa20X {
     fun cryptoStream(c: ByteArray, m: ByteArray, len: Int, nonce: ByteArray, key: ByteArray) {
         val block = ByteArray(64)
         val x = IntArray(16)
+        val xOrig = IntArray(16) // Added xOrig to preserve initial state
         var offset = 0
         var blockIndex = 0L
 
         while (offset < len) {
-            x[0] = 0x61707865
-            x[1] = readIntLE(key, 0)
-            x[2] = readIntLE(key, 4)
-            x[3] = readIntLE(key, 8)
-            x[4] = readIntLE(key, 12)
-            x[5] = 0x33322d67
-            x[6] = readIntLE(nonce, 0)
-            x[7] = readIntLE(nonce, 4)
-            x[8] = (blockIndex and 0xFFFFFFFFL).toInt()
-            x[9] = (blockIndex ushr 32).toInt()
-            x[10] = 0x6b6e6920
-            x[11] = readIntLE(key, 16)
-            x[12] = readIntLE(key, 20)
-            x[13] = readIntLE(key, 24)
-            x[14] = readIntLE(key, 28)
-            x[15] = 0x61622065
+            xOrig[0] = 0x61707865
+            xOrig[1] = readIntLE(key, 0)
+            xOrig[2] = readIntLE(key, 4)
+            xOrig[3] = readIntLE(key, 8)
+            xOrig[4] = readIntLE(key, 12)
+            xOrig[5] = 0x33322d67
+            xOrig[6] = readIntLE(nonce, 0)
+            xOrig[7] = readIntLE(nonce, 4)
+            xOrig[8] = (blockIndex and 0xFFFFFFFFL).toInt()
+            xOrig[9] = (blockIndex ushr 32).toInt()
+            xOrig[10] = 0x6b6e6920
+            xOrig[11] = readIntLE(key, 16)
+            xOrig[12] = readIntLE(key, 20)
+            xOrig[13] = readIntLE(key, 24)
+            xOrig[14] = readIntLE(key, 28)
+            xOrig[15] = 0x61622065
+
+            // Clone xOrig values into our active state array
+            System.arraycopy(xOrig, 0, x, 0, 16)
 
             for (i in 0..9) {
                 salsaQuarterRound(x, 0, 4, 8, 12)
@@ -586,7 +588,9 @@ object XSalsa20X {
             }
 
             for (i in 0..15) {
-                writeIntLE(block, i * 4, x[i] + readIntLE(key, i * 4))
+                // Correctly adds initial state xOrig back to active state x.
+                // This preserves mathematical correctness and avoids out-of-bounds index reads on the 32-byte key.
+                writeIntLE(block, i * 4, x[i] + xOrig[i])
             }
 
             val currentLen = if (len - offset < 64) len - offset else 64
