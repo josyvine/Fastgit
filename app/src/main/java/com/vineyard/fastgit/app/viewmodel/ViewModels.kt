@@ -647,26 +647,6 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 }
 
-class SettingsViewModel(application: Application) : AndroidViewModel(application) {
-    private val tokenManager = TokenManager(application)
-    private val _themeMode = MutableStateFlow("System") // "System", "Dark", "Light"
-    val themeMode: StateFlow<String> = _themeMode
-
-    private val _cacheSize = MutableStateFlow("4.2 MB")
-    val cacheSize: StateFlow<String> = _cacheSize
-
-    fun setTheme(theme: String) {
-        _themeMode.value = theme
-    }
-
-    fun clearCache() {
-        viewModelScope.launch {
-            AppDatabase.getInstance(getApplication()).cacheDao().clearAllCache()
-            _cacheSize.value = "0 KB"
-        }
-    }
-}
-
 // Global Sample Helpers
 fun getSampleRepositories(): List<Repository> {
     return listOf(
