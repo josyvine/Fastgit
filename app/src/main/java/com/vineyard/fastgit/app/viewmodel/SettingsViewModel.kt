@@ -6,7 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vineyard.fastgit.app.database.AppDatabase
 import com.vineyard.fastgit.app.database.KeystoreProfileEntity
-import com.vineyard.fastgit.app.models.Repository
+import com.vineyard.fastgit.app.models.*
 import com.vineyard.fastgit.app.network.RetrofitClient
 import com.vineyard.fastgit.app.utils.AppLogger
 import com.vineyard.fastgit.app.utils.TokenManager
