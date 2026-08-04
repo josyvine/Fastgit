@@ -350,10 +350,14 @@ object SodiumCryptoSealedBox {
  */
 object Blake2b24 {
     private val IV = longArrayOf(
-        0x6a09e667f3bcc908L, 0xbb67ae8584caa73bL,
-        0x3c6ef372fe94f82bL, 0xa54ff53a5f1d36f1L,
-        0x510e527fade682d1L, 0x9b05688c2b3e6c1fL,
-        0x1f83d9abfb41bd6bL, 0x5be0cd19137e2179L
+        0x6a09e667f3bcc908L,
+        0xbb67ae8584caa73bUL.toLong(), // Handled unsigned hexadecimal compiler overflow safely
+        0x3c6ef372fe94f82bL,
+        0xa54ff53a5f1d36f1UL.toLong(), // Handled unsigned hexadecimal compiler overflow safely
+        0x510e527fade682d1L,
+        0x9b05688c2b3e6c1fUL.toLong(), // Handled unsigned hexadecimal compiler overflow safely
+        0x1f83d9abfb41bd6bL,
+        0x5be0cd19137e2179L
     )
 
     private val SIGMA = arrayOf(
