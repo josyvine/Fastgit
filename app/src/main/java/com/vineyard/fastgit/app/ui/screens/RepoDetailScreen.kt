@@ -489,6 +489,8 @@ fun ExplorerTabContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Safely offset the maximized explorer content under the translucent system status bar
+                .then(if (isMaximized) Modifier.statusBarsPadding() else Modifier)
                 .padding(12.dp)
         ) {
             // Quick Action Toolbar for Explorer (Hide entirely when maximized)
@@ -728,20 +730,20 @@ fun ExplorerTabContent(
                                         onClick = onUploadZipClick,
                                         colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
                                         shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
                                         Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Upload ZIP", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("Upload ZIP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                     OutlinedButton(
                                         onClick = { showNewFileDialog = true },
                                         shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
                                         Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("New File", fontSize = 12.sp, color = Color.White)
+                                        Text("New File", fontSize = 11.sp, color = Color.White)
                                     }
                                 }
                             }
@@ -875,7 +877,7 @@ fun ExplorerTabContent(
                         repoDetailViewModel.renameItem(t, newNameInput)
                     },
                     enabled = newNameInput.isNotBlank() && newNameInput != target.name,
-                    colors = ButtonDefaults.buttonColors(containerColor = GhAccentBlue)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GhAccentBlue)
                 ) {
                     Text("Rename")
                 }
@@ -1697,4 +1699,3 @@ fun RepoSettingsTabContent(repoDetailViewModel: RepoDetailViewModel, onBack: () 
         }
     }
 }
-
