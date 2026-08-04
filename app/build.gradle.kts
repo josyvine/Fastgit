@@ -49,6 +49,19 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  buildTypes {
+    release {
+      isCrunchPngs = false
+      isMinifyEnabled = false
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      signingConfig = signingConfigs.getByName("release")
+    }
+    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+  }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+  }
   buildFeatures {
     compose = true
     buildConfig = true
@@ -73,6 +86,12 @@ dependencies {
   
   // FIX: Resolves the InvalidFragmentVersionForActivityResult Lint error
   implementation("androidx.fragment:fragment-ktx:1.8.2")
+
+  // JNA (Java Native Access) dependency required for the LazySodium runtime bridge
+  implementation("net.java.dev.jna:jna:5.17.0@aar")
+
+  // LazySodium Android library dependency containing native Libsodium binaries
+  implementation("com.goterl:lazysodium-android:5.2.0@aar")
 
   // implementation(libs.androidx.camera.camera2)
   // implementation(libs.androidx.camera.core)
