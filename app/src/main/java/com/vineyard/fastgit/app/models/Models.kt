@@ -256,3 +256,29 @@ data class CreateReleaseRequest(
     val draft: Boolean = false,
     val prerelease: Boolean = false
 )
+
+data class RecursiveTreeResponse(
+    val sha: String,
+    val url: String,
+    val tree: List<GitTreeEntry>,
+    val truncated: Boolean
+)
+
+data class GitTreeEntry(
+    val path: String,
+    val mode: String,
+    val type: String, // "blob" (file) or "tree" (directory/folder)
+    val sha: String,
+    val size: Long? = null,
+    val url: String
+)
+
+data class PublicKeyResponse(
+    val key_id: String,
+    val key: String
+)
+
+data class CreateSecretRequest(
+    val encrypted_value: String,
+    val key_id: String
+)
