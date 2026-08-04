@@ -69,6 +69,8 @@ fun RepoDetailScreen(
     var selectedTab by remember { mutableStateOf(0) }
     val tabTitles = listOf("Explorer", "Branches", "Commits", "PRs", "Issues", "Actions", "Releases", "Settings")
 
+    var isExplorerMaximized by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
 
     // File launcher for ZIP upload
@@ -95,87 +97,92 @@ fun RepoDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = repository?.name ?: repoDetailViewModel.repoName,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "${repoDetailViewModel.owner} • branch: $currentBranch",
-                            fontSize = 12.sp,
-                            color = GhTextSecondaryDark
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                },
-                actions = {
-                    // Branch Selector Dropdown Button
-                    var branchMenuExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        TextButton(
-                            onClick = { branchMenuExpanded = true },
-                            colors = ButtonDefaults.textButtonColors(contentColor = GhAccentBlue)
-                        ) {
-                            Icon(Icons.Default.CallSplit, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(currentBranch, fontSize = 13.sp)
+            // Hide TopAppBar only when Explorer is maximized
+            if (!isExplorerMaximized || selectedTab != 0) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = repository?.name ?: repoDetailViewModel.repoName,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "${repoDetailViewModel.owner} • branch: $currentBranch",
+                                fontSize = 12.sp,
+                                color = GhTextSecondaryDark
+                            )
                         }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    },
+                    actions = {
+                        // Branch Selector Dropdown Button
+                        var branchMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(
+                                onClick = { branchMenuExpanded = true },
+                                colors = ButtonDefaults.textButtonColors(contentColor = GhAccentBlue)
+                            ) {
+                                Icon(Icons.Default.CallSplit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(currentBranch, fontSize = 13.sp)
+                            }
 
-                        DropdownMenu(
-                            expanded = branchMenuExpanded,
-                            onDismissRequest = { branchMenuExpanded = false },
-                            modifier = Modifier.background(GhSurfaceDark)
-                        ) {
-                            branches.forEach { branch ->
-                                DropdownMenuItem(
-                                    text = { Text(branch.name, color = Color.White) },
-                                    onClick = {
-                                        branchMenuExpanded = false
-                                        repoDetailViewModel.switchBranch(branch.name)
-                                    }
-                                )
+                            DropdownMenu(
+                                expanded = branchMenuExpanded,
+                                onDismissRequest = { branchMenuExpanded = false },
+                                modifier = Modifier.background(GhSurfaceDark)
+                            ) {
+                                branches.forEach { branch ->
+                                    DropdownMenuItem(
+                                        text = { Text(branch.name, color = Color.White) },
+                                        onClick = {
+                                            branchMenuExpanded = false
+                                            repoDetailViewModel.switchBranch(branch.name)
+                                        }
+                                    )
+                                }
                             }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = GhSurfaceDark)
-            )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = GhSurfaceDark)
+                )
+            }
         },
         containerColor = GhBgDark
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(if (isExplorerMaximized && selectedTab == 0) PaddingValues(0.dp) else innerPadding)
         ) {
-            // Scrollable Sub-Tabs Row
-            ScrollableTabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = GhSurfaceDark,
-                contentColor = GhAccentBlue,
-                edgePadding = 12.dp
-            ) {
-                tabTitles.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = {
-                            Text(
-                                text = title,
-                                fontSize = 13.sp,
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedTab == index) GhAccentBlue else GhTextSecondaryDark
-                            )
-                        }
-                    )
+            // Scrollable Sub-Tabs Row (Hide when Explorer is maximized)
+            if (!isExplorerMaximized || selectedTab != 0) {
+                ScrollableTabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = GhSurfaceDark,
+                    contentColor = GhAccentBlue,
+                    edgePadding = 12.dp
+                ) {
+                    tabTitles.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = {
+                                Text(
+                                    text = title,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selectedTab == index) GhAccentBlue else GhTextSecondaryDark
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
@@ -184,7 +191,9 @@ fun RepoDetailScreen(
                 when (selectedTab) {
                     0 -> ExplorerTabContent(
                         repoDetailViewModel = repoDetailViewModel,
-                        onUploadZipClick = { zipPickerLauncher.launch("application/zip") }
+                        onUploadZipClick = { zipPickerLauncher.launch("application/zip") },
+                        isMaximized = isExplorerMaximized,
+                        onToggleMaximize = { isExplorerMaximized = !isExplorerMaximized }
                     )
                     1 -> BranchesTabContent(repoDetailViewModel)
                     2 -> CommitsTabContent(repoDetailViewModel)
@@ -392,7 +401,9 @@ fun RepoDetailScreen(
 @Composable
 fun ExplorerTabContent(
     repoDetailViewModel: RepoDetailViewModel,
-    onUploadZipClick: () -> Unit
+    onUploadZipClick: () -> Unit,
+    isMaximized: Boolean,
+    onToggleMaximize: () -> Unit
 ) {
     val treeItems by repoDetailViewModel.treeItems.collectAsState()
     val currentPath by repoDetailViewModel.currentPath.collectAsState()
@@ -480,85 +491,86 @@ fun ExplorerTabContent(
                 .fillMaxSize()
                 .padding(12.dp)
         ) {
-            // Quick Action Toolbar for Explorer
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
-                border = ButtonDefaults.outlinedButtonBorder(enabled = true),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Upload Project ZIP
-                        Button(
-                            onClick = onUploadZipClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Upload ZIP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Search & Replace (VS Code Style)
-                        OutlinedButton(
-                            onClick = { showSearchReplaceDialog = true },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.FindReplace, contentDescription = null, tint = GhAccentBlue, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Refactor / Replace", fontSize = 11.sp, color = Color.White)
-                        }
-
-                        // New File
-                        OutlinedButton(
-                            onClick = { showNewFileDialog = true },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("New File", fontSize = 11.sp, color = Color.White)
-                        }
-                    }
-
-                    if (copiedItem != null) {
-                        Spacer(modifier = Modifier.height(6.dp))
+            // Quick Action Toolbar for Explorer (Hide entirely when maximized)
+            if (!isMaximized) {
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = GhSurfaceDark),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF161B22), RoundedCornerShape(6.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Copied: ${copiedItem?.name}",
-                                fontSize = 11.sp,
-                                color = GhAccentBlue,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            TextButton(
-                                onClick = { repoDetailViewModel.pasteCopiedItem(currentPath) },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            // Upload Project ZIP
+                            Button(
+                                onClick = onUploadZipClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = GhPrimaryViolet),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text("Paste to /${currentPath.ifEmpty { "root" }}", fontSize = 11.sp, color = GhSuccessGreen, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Upload ZIP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Search & Replace (VS Code Style)
+                            OutlinedButton(
+                                onClick = { showSearchReplaceDialog = true },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.FindReplace, contentDescription = null, tint = GhAccentBlue, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Refactor / Replace", fontSize = 11.sp, color = Color.White)
+                            }
+
+                            // New File
+                            OutlinedButton(
+                                onClick = { showNewFileDialog = true },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, tint = GhSuccessGreen, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("New File", fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+
+                        if (copiedItem != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF161B22), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Copied: ${copiedItem?.name}",
+                                    fontSize = 11.sp,
+                                    color = GhAccentBlue,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { repoDetailViewModel.pasteCopiedItem(currentPath) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Paste to /${currentPath.ifEmpty { "root" }}", fontSize = 11.sp, color = GhSuccessGreen, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             // View Mode Switcher Pills (Tree vs Folder View)
             Row(
@@ -633,10 +645,12 @@ fun ExplorerTabContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Breadcrumb Navigation Bar
+            // Breadcrumb Navigation Bar (Including the Maximize/Minimize Toggle button)
             BreadcrumbBar(
                 currentPath = currentPath,
-                onNavigatePath = { targetPath -> repoDetailViewModel.navigateToDirectory(targetPath) }
+                onNavigatePath = { targetPath -> repoDetailViewModel.navigateToDirectory(targetPath) },
+                isMaximized = isMaximized,
+                onToggleMaximize = onToggleMaximize
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -1195,7 +1209,9 @@ fun ParentFolderNodeRow(
 @Composable
 fun BreadcrumbBar(
     currentPath: String,
-    onNavigatePath: (String) -> Unit
+    onNavigatePath: (String) -> Unit,
+    isMaximized: Boolean,
+    onToggleMaximize: () -> Unit
 ) {
     val segments = remember(currentPath) {
         if (currentPath.isBlank()) {
@@ -1221,48 +1237,67 @@ fun BreadcrumbBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = Icons.Default.Folder,
-                contentDescription = null,
-                tint = GhAccentBlue,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-
-            androidx.compose.foundation.lazy.LazyRow(
+            Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.weight(1f)
             ) {
-                items(segments.size) { index ->
-                    val seg = segments[index]
-                    val isLast = index == segments.size - 1
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = GhAccentBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
 
-                    if (index > 0) {
-                        Text(
-                            text = "/",
-                            color = GhTextSecondaryDark,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                androidx.compose.foundation.lazy.LazyRow(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(segments.size) { index ->
+                        val seg = segments[index]
+                        val isLast = index == segments.size - 1
 
-                    Surface(
-                        onClick = { onNavigatePath(seg.path) },
-                        color = if (isLast) Color(0xFF21262D) else Color.Transparent,
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = seg.name,
-                            fontSize = 12.sp,
-                            fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (isLast) Color.White else GhAccentBlue,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                        if (index > 0) {
+                            Text(
+                                text = "/",
+                                color = GhTextSecondaryDark,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Surface(
+                            onClick = { onNavigatePath(seg.path) },
+                            color = if (isLast) Color(0xFF21262D) else Color.Transparent,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = seg.name,
+                                fontSize = 12.sp,
+                                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (isLast) Color.White else GhAccentBlue,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
+            }
+
+            // Maximize / Minimize Icon Trigger on the extreme right
+            IconButton(
+                onClick = onToggleMaximize,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = if (isMaximized) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    contentDescription = if (isMaximized) "Minimize View" else "Maximize View",
+                    tint = GhAccentBlue,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
@@ -1662,3 +1697,4 @@ fun RepoSettingsTabContent(repoDetailViewModel: RepoDetailViewModel, onBack: () 
         }
     }
 }
+
