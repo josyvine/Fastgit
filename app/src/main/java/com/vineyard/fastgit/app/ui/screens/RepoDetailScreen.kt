@@ -726,12 +726,13 @@ fun ExplorerTabContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Breadcrumb Navigation Bar (Including the Maximize/Minimize Toggle button)
+            // Breadcrumb Navigation Bar (Including the Maximize/Minimize Toggle button and persistent inline Plus button)
             BreadcrumbBar(
                 currentPath = currentPath,
                 onNavigatePath = { targetPath -> repoDetailViewModel.navigateToDirectory(targetPath) },
                 isMaximized = isMaximized,
-                onToggleMaximize = onToggleMaximize
+                onToggleMaximize = onToggleMaximize,
+                onCreateFileClick = { showNewFileDialog = true }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -879,10 +880,17 @@ fun ExplorerTabContent(
             title = { Text("Create New File", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val activeDirText = if (currentPath.isBlank()) "root" else "/$currentPath"
+                    Text(
+                        text = "Creating file inside: $activeDirText",
+                        color = GhAccentBlue,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                     OutlinedTextField(
                         value = newFileName,
                         onValueChange = { newFileName = it },
-                        label = { Text("File Name (e.g. MyClass.kt or src/NewFile.java)") },
+                        label = { Text("File Name (e.g. MyClass.kt)") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
@@ -1292,7 +1300,8 @@ fun BreadcrumbBar(
     currentPath: String,
     onNavigatePath: (String) -> Unit,
     isMaximized: Boolean,
-    onToggleMaximize: () -> Unit
+    onToggleMaximize: () -> Unit,
+    onCreateFileClick: () -> Unit
 ) {
     val segments = remember(currentPath) {
         if (currentPath.isBlank()) {
@@ -1368,17 +1377,34 @@ fun BreadcrumbBar(
                 }
             }
 
-            // Maximize / Minimize Icon Trigger on the extreme right
-            IconButton(
-                onClick = onToggleMaximize,
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(
-                    imageVector = if (isMaximized) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    contentDescription = if (isMaximized) "Minimize View" else "Maximize View",
-                    tint = GhAccentBlue,
-                    modifier = Modifier.size(20.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Persistent + Create Icon beside folder view
+                IconButton(
+                    onClick = onCreateFileClick,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Create New File",
+                        tint = GhSuccessGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Maximize / Minimize Icon Trigger on the extreme right
+                IconButton(
+                    onClick = onToggleMaximize,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isMaximized) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                        contentDescription = if (isMaximized) "Minimize View" else "Maximize View",
+                        tint = GhAccentBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
