@@ -1,27 +1,28 @@
 package com.vineyard.fastgit.app.viewmodel
 
 import android.app.Application
-import android.content.Context
 import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vineyard.fastgit.app.database.AppDatabase
+import com.vineyard.fastgit.app.database.KeystoreProfileEntity
 import com.vineyard.fastgit.app.models.Repository
 import com.vineyard.fastgit.app.network.RetrofitClient
 import com.vineyard.fastgit.app.utils.AppLogger
 import com.vineyard.fastgit.app.utils.TokenManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.charset.StandardCharsets
-import org.json.JSONObject
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     
     private val tokenManager = TokenManager(application)
-    private val keystorePrefs = application.getSharedPreferences("fastgit_keystore_profiles", Context.MODE_PRIVATE)
+    private val database = AppDatabase.getInstance(application)
+    private val keystoreDao = database.keystoreProfileDao()
 
     // Standard Preferences States
     private val _themeMode = MutableStateFlow("System")
@@ -45,7 +46,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         _themeMode.value = "System"
-        loadSavedAliases()
+        observeSavedProfiles()
         loadUserRepositories()
     }
 
@@ -72,10 +73,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Keystore Profiles Storage Logic
-    private fun loadSavedAliases() {
-        val keys = keystorePrefs.all.keys
-        _savedAliases.value = keys.toList().sorted()
+    // Database Keystore Profiles Storage Logic
+    private fun observeSavedProfiles() {
+        viewModelScope.launch {
+            keystoreDao.getAllProfilesFlow().collect { profiles ->
+                _savedAliases.value = profiles.map { it.alias }
+            }
+        }
     }
 
     fun saveKeystoreProfile(
@@ -91,25 +95,38 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val profileJson = JSONObject().apply {
-                    put("keystore_base64", keystoreBase64)
-                    put("keystore_password", keystorePassword)
-                    put("key_alias", keyAlias)
-                    put("key_password", keyPassword)
-                }.toString()
-
-                keystorePrefs.edit().putString(alias, profileJson).apply()
+                val entity = KeystoreProfileEntity(
+                    alias = alias,
+                    keystoreBase64 = keystoreBase64,
+                    keystorePassword = keystorePassword,
+                    keyAlias = keyAlias,
+                    keyPassword = keyPassword
+                )
+                keystoreDao.insertProfile(entity)
                 
                 withContext(Dispatchers.Main) {
-                    loadSavedAliases()
-                    _statusMessage.value = "Keystore profile '$alias' saved locally!"
-                    AppLogger.s("Settings", "Saved keystore profile alias: '$alias'")
+                    _statusMessage.value = "Keystore profile '$alias' saved to database!"
+                    AppLogger.s("Settings", "Saved keystore profile alias to database: '$alias'")
                 }
             } catch (e: Exception) {
-                AppLogger.e("Settings", "Failed to save keystore profile locally: ${e.message}", e)
+                AppLogger.e("Settings", "Failed to save keystore profile to database: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     _statusMessage.value = "Failed to save profile: ${e.message}"
                 }
+            }
+        }
+    }
+
+    fun deleteKeystoreProfile(alias: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                keystoreDao.deleteProfile(alias)
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Keystore profile '$alias' deleted!"
+                    AppLogger.i("Settings", "Deleted keystore profile alias: '$alias'")
+                }
+            } catch (e: Exception) {
+                AppLogger.e("Settings", "Failed to delete keystore profile: ${e.message}", e)
             }
         }
     }
@@ -144,25 +161,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        val profileJsonStr = keystorePrefs.getString(profileAlias, null)
-        if (profileJsonStr.isNullOrBlank()) {
-            _statusMessage.value = "Selected keystore profile '$profileAlias' could not be loaded"
-            return
-        }
-
         viewModelScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 _isLoading.value = true
-                _statusMessage.value = "Propagating credentials to $targetRepoOwner/$targetRepoName..."
+                _statusMessage.value = "Retrieving profile details and propagating credentials..."
             }
 
             try {
-                val profile = JSONObject(profileJsonStr)
+                val profile = keystoreDao.getProfile(profileAlias)
+                if (profile == null) {
+                    withContext(Dispatchers.Main) {
+                        _statusMessage.value = "Selected keystore profile '$profileAlias' could not be found in database"
+                        _isLoading.value = false
+                    }
+                    return@launch
+                }
+
                 val secretsMap = mapOf(
-                    "KEYSTORE_BASE64" to profile.optString("keystore_base64", ""),
-                    "KEYSTORE_PASSWORD" to profile.optString("keystore_password", ""),
-                    "KEY_ALIAS" to profile.optString("key_alias", ""),
-                    "KEY_PASSWORD" to profile.optString("key_password", "")
+                    "KEYSTORE_BASE64" to profile.keystoreBase64,
+                    "KEYSTORE_PASSWORD" to profile.keystorePassword,
+                    "KEY_ALIAS" to profile.keyAlias,
+                    "KEY_PASSWORD" to profile.keyPassword
                 )
 
                 if (tokenManager.isDemoMode()) {
