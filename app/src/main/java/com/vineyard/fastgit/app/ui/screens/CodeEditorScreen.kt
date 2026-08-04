@@ -46,6 +46,7 @@ fun CodeEditorScreen(
     var undoStack by remember(initialContent) { mutableStateOf(listOf(initialContent)) }
     var redoStack by remember(initialContent) { mutableStateOf(listOf<String>()) }
     var showCommitDialog by remember { mutableStateOf(false) }
+    var showMenuDropdown by remember { mutableStateOf(false) }
 
     // Track the last state pushed to the undo stack to optimize memory allocations
     var lastPushedText by remember(initialContent) { mutableStateOf(initialContent) }
@@ -76,16 +77,105 @@ fun CodeEditorScreen(
                     }
                 },
                 actions = {
-                    // Copy Code Button
-                    IconButton(
-                        onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("Copied Code", codeText)
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, "Code copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    // Collapsible Actions Dropdown (Copy, Paste, Cut, Delete)
+                    Box {
+                        IconButton(onClick = { showMenuDropdown = true }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Editor Action Menu",
+                                tint = Color.White
+                            )
                         }
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", tint = Color.White)
+                        DropdownMenu(
+                            expanded = showMenuDropdown,
+                            onDismissRequest = { showMenuDropdown = false },
+                            modifier = Modifier.background(GhSurfaceDark)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Copy", color = Color.White) },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Copied Code", codeText)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Code copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GhAccentBlue)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Paste", color = Color.White) },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clipData = clipboard.primaryClip
+                                    if (clipData != null && clipData.itemCount > 0) {
+                                        val pastedText = clipData.getItemAt(0).text?.toString() ?: ""
+                                        if (pastedText.isNotEmpty()) {
+                                            val oldText = codeText
+                                            if (oldText != lastPushedText) {
+                                                undoStack = undoStack + oldText
+                                            }
+                                            codeText = pastedText
+                                            undoStack = undoStack + pastedText
+                                            lastPushedText = pastedText
+                                            redoStack = emptyList()
+                                            Toast.makeText(context, "Pasted clipboard content!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "Clipboard is empty!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.ContentPaste, contentDescription = null, tint = GhSuccessGreen)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Cut", color = Color.White) },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Copied Code", codeText)
+                                    clipboard.setPrimaryClip(clip)
+                                    
+                                    val oldText = codeText
+                                    if (oldText.isNotEmpty()) {
+                                        if (oldText != lastPushedText) {
+                                            undoStack = undoStack + oldText
+                                        }
+                                        codeText = ""
+                                        undoStack = undoStack + ""
+                                        lastPushedText = ""
+                                        redoStack = emptyList()
+                                        Toast.makeText(context, "Cut code to clipboard!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.ContentCut, contentDescription = null, tint = GhAccentBlue)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = Color.Red) },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    val oldText = codeText
+                                    if (oldText.isNotEmpty()) {
+                                        if (oldText != lastPushedText) {
+                                            undoStack = undoStack + oldText
+                                        }
+                                        codeText = ""
+                                        undoStack = undoStack + ""
+                                        lastPushedText = ""
+                                        redoStack = emptyList()
+                                        Toast.makeText(context, "Cleared editor workspace!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red)
+                                }
+                            )
+                        }
                     }
 
                     // Download File Button
