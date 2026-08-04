@@ -63,6 +63,14 @@ interface GitHubApiService {
         @Query("ref") ref: String? = null
     ): FileItem
 
+    @GET("repos/{owner}/{repo}/git/trees/{tree_sha}")
+    suspend fun getRecursiveTree(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("tree_sha") treeSha: String,
+        @Query("recursive") recursive: Int = 1
+    ): RecursiveTreeResponse
+
     @Streaming
     @GET("repos/{owner}/{repo}/zipball/{ref}")
     suspend fun downloadZipball(
@@ -239,4 +247,20 @@ data class WorkflowStep(
     val status: String, // "queued", "in_progress", "completed"
     val conclusion: String?, // "success", "failure", "cancelled"
     val number: Int
+)
+
+data class RecursiveTreeResponse(
+    val sha: String,
+    val url: String,
+    val tree: List<GitTreeEntry>,
+    val truncated: Boolean
+)
+
+data class GitTreeEntry(
+    val path: String,
+    val mode: String,
+    val type: String, // "blob" (file) or "tree" (directory/folder)
+    val sha: String,
+    val size: Long? = null,
+    val url: String
 )
