@@ -583,7 +583,7 @@ class RepoDetailViewModel(
                     try {
                         val single = api.getSingleFileContent(owner, repo, item.path, branch)
                         val bytes = if (single.encoding == "base64" && single.content != null) {
-                            val cleanB64 = single.content.replace("\n", "").replace("\r", "")
+                            val clean B64 = single.content.replace("\n", "").replace("\r", "")
                             Base64.decode(cleanB64, Base64.DEFAULT)
                         } else {
                             single.content?.toByteArray(Charsets.UTF_8) ?: ByteArray(0)
@@ -1127,7 +1127,9 @@ class RepoDetailViewModel(
                                         "in_progress" -> "⟳"
                                         else -> "○"
                                     }
-                                    val conclusionText = if (step.conclusion != null) " (${step.conclusion})" else ""
+                                    val conclusionText = if (step.conclusion != null) {
+                                        " (${step.conclusion})"
+                                    } else ""
                                     combinedLogs.append("$statusIcon ${step.number}. ${step.name} - ${step.status}$conclusionText\n")
                                 }
                             }
@@ -1196,6 +1198,43 @@ class RepoDetailViewModel(
     fun closeActiveFile() {
         _activeFile.value = null
         _fileContent.value = ""
+    }
+
+    fun searchAndJumpToPath(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            val matchedItem = findItemInTreeRecursively(_treeItems.value, query)
+            if (matchedItem != null) {
+                val targetPath = if (matchedItem.type == "dir") {
+                    matchedItem.path
+                } else {
+                    // For files, navigate to the parent folder so the file is visible in the list
+                    if (matchedItem.path.contains("/")) {
+                        matchedItem.path.substringBeforeLast("/")
+                    } else {
+                        "" // Root
+                    }
+                }
+                AppLogger.s("SearchExplorer", "Found match: '${matchedItem.path}'. Navigating to '$targetPath'")
+                navigateToDirectory(targetPath)
+            } else {
+                _statusMessage.value = "No match found for '$query'"
+                AppLogger.i("SearchExplorer", "No file or folder matching '$query' found.")
+            }
+        }
+    }
+
+    private fun findItemInTreeRecursively(items: List<FileItem>, query: String): FileItem? {
+        for (item in items) {
+            if (item.name.contains(query, ignoreCase = true)) {
+                return item
+            }
+            if (item.children.isNotEmpty()) {
+                val found = findItemInTreeRecursively(item.children, query)
+                if (found != null) return found
+            }
+        }
+        return null
     }
 
     override fun onCleared() {
