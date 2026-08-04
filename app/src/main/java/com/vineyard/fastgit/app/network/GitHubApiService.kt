@@ -225,4 +225,18 @@ interface GitHubApiService {
 
 // Data structures representing mapping schemas safely
 data class WorkflowRunJobsResponse(val jobs: List<WorkflowJob>?)
-data class WorkflowJob(val id: Long, val name: String, val status: String, val conclusion: String?)
+
+data class WorkflowJob(
+    val id: Long,
+    val name: String,
+    val status: String,
+    val conclusion: String?,
+    val steps: List<WorkflowStep>? = emptyList() // Added steps tracking to parse runner step details
+)
+
+data class WorkflowStep(
+    val name: String,
+    val status: String, // "queued", "in_progress", "completed"
+    val conclusion: String?, // "success", "failure", "cancelled"
+    val number: Int
+)
