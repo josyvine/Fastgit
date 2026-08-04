@@ -51,7 +51,7 @@ interface GitHubApiService {
     suspend fun getContents(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("path") path: String = "",
+        @Path(value = "path", encoded = true) path: String = "",
         @Query("ref") ref: String? = null
     ): List<FileItem>
 
@@ -59,7 +59,7 @@ interface GitHubApiService {
     suspend fun getSingleFileContent(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("path") path: String,
+        @Path(value = "path", encoded = true) path: String,
         @Query("ref") ref: String? = null
     ): FileItem
 
@@ -83,7 +83,7 @@ interface GitHubApiService {
     suspend fun createOrUpdateFile(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("path") path: String,
+        @Path(value = "path", encoded = true) path: String,
         @Body request: CreateFileRequest
     ): Response<ResponseBody>
 
@@ -91,7 +91,7 @@ interface GitHubApiService {
     suspend fun deleteFile(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("path") path: String,
+        @Path(value = "path", encoded = true) path: String,
         @Body body: Map<String, String>
     ): Response<ResponseBody>
 
