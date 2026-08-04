@@ -491,7 +491,10 @@ object Curve25519X {
     }
 
     private fun pack(out: ByteArray, x: LongArray) {
-        val tx = x.clone()
+        // Changed initialization to guarantee tx is allocated with 16 elements.
+        // This provides valid array index space up to index 15, resolving the out-of-bounds crash.
+        val tx = LongArray(16)
+        System.arraycopy(x, 0, tx, 0, minOf(x.size, 10))
         carry(tx)
         for (i in 0..31) {
             val idx = i / 3
