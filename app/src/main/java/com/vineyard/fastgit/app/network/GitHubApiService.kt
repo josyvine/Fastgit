@@ -67,7 +67,7 @@ interface GitHubApiService {
     suspend fun getRecursiveTree(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("tree_sha") treeSha: String,
+        @Path(value = "tree_sha", encoded = true) treeSha: String,
         @Query("recursive") recursive: Int = 1
     ): RecursiveTreeResponse
 
@@ -76,7 +76,7 @@ interface GitHubApiService {
     suspend fun downloadZipball(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("ref") ref: String = "main"
+        @Path(value = "ref", encoded = true) ref: String = "main"
     ): Response<ResponseBody>
 
     @PUT("repos/{owner}/{repo}/contents/{path}")
@@ -113,7 +113,7 @@ interface GitHubApiService {
     suspend fun deleteBranch(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("branch") branch: String
+        @Path(value = "branch", encoded = true) branch: String
     ): Response<Unit>
 
     // Commits
