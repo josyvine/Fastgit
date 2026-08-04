@@ -934,6 +934,9 @@ class RepoDetailViewModel(
     }
 
     fun fetchWorkflowRunLogs(runId: Long) {
+        // Cancel any previously active background polling sessions first
+        pollingJob?.cancel()
+
         if (tokenManager.isDemoMode()) {
             _isLogsLoading.value = true
             viewModelScope.launch {
@@ -951,57 +954,99 @@ class RepoDetailViewModel(
             return
         }
 
-        viewModelScope.launch {
-            _isLogsLoading.value = true
-            _workflowLogs.value = "Retrieving workflow build parameters..."
-            try {
-                val api = RetrofitClient.getService(tokenManager)
-                val jobsResponse = api.getWorkflowRunJobs(owner, repoName, runId)
-                val jobs = jobsResponse.jobs ?: emptyList()
-                if (jobs.isEmpty()) {
-                    _workflowLogs.value = "No build jobs detected for this workflow run."
-                    return@launch
+        // Launch a continuous, active polling loop scoped to the viewModelScope
+        pollingJob = viewModelScope.launch(Dispatchers.IO) {
+            var shouldContinuePolling = true
+            var isFirstFetch = true
+
+            while (shouldContinuePolling) {
+                if (isFirstFetch) {
+                    _isLogsLoading.value = true
+                    withContext(Dispatchers.Main) {
+                        _workflowLogs.value = "Retrieving workflow build parameters..."
+                    }
                 }
 
-                val combinedLogs = StringBuilder()
-                for (job in jobs) {
-                    combinedLogs.append("--- JOB STEP: ${job.name} (Status: ${job.status}, Conclusion: ${job.conclusion ?: "pending"}) ---\n")
-                    try {
-                        val logBody = api.getJobLogs(owner, repoName, job.id)
-                        combinedLogs.append(logBody.string())
-                    } catch (e: Exception) {
-                        // Render step-by-step progress instead of showing a flat 404 error during active builds
-                        if (e is retrofit2.HttpException && e.code() == 404) {
-                            combinedLogs.append("[Active Job Build Steps]\n")
-                            combinedLogs.append("--------------------------------------------------\n")
-                            val steps = job.steps ?: emptyList()
-                            if (steps.isEmpty()) {
-                                combinedLogs.append("Initializing build runner steps...\n")
-                            } else {
-                                for (step in steps) {
-                                    val statusIcon = when (step.status) {
-                                        "completed" -> if (step.conclusion == "success") "✔" else "✘"
-                                        "in_progress" -> "⟳"
-                                        else -> "○"
+                try {
+                    val api = RetrofitClient.getService(tokenManager)
+                    val jobsResponse = api.getWorkflowRunJobs(owner, repoName, runId)
+                    val jobs = jobsResponse.jobs ?: emptyList()
+
+                    if (jobs.isEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            _workflowLogs.value = "No build jobs detected for this workflow run."
+                        }
+                        shouldContinuePolling = false
+                    } else {
+                        val combinedLogs = StringBuilder()
+                        var anyJobActive = false
+
+                        for (job in jobs) {
+                            // Track if there are active in-progress or queued jobs to determine polling state
+                            if (job.status != "completed") {
+                                anyJobActive = true
+                            }
+
+                            combinedLogs.append("--- JOB STEP: ${job.name} (Status: ${job.status}, Conclusion: ${job.conclusion ?: "pending"}) ---\n")
+                            try {
+                                val logBody = api.getJobLogs(owner, repoName, job.id)
+                                combinedLogs.append(logBody.string())
+                            } catch (e: Exception) {
+                                // Handle active step progress checklist fallback on HTTP 404
+                                if (e is retrofit2.HttpException && e.code() == 404) {
+                                    combinedLogs.append("[Active Job Build Steps]\n")
+                                    combinedLogs.append("--------------------------------------------------\n")
+                                    val steps = job.steps ?: emptyList()
+                                    if (steps.isEmpty()) {
+                                        combinedLogs.append("Initializing build runner steps...\n")
+                                    } else {
+                                        for (step in steps) {
+                                            val statusIcon = when (step.status) {
+                                                "completed" -> if (step.conclusion == "success") "✔" else "✘"
+                                                "in_progress" -> "⟳"
+                                                else -> "○"
+                                            }
+                                            val conclusionText = if (step.conclusion != null) " (${step.conclusion})" else ""
+                                            combinedLogs.append("$statusIcon ${step.number}. ${step.name} - ${step.status}$conclusionText\n")
+                                        }
                                     }
-                                    val conclusionText = if (step.conclusion != null) " (${step.conclusion})" else ""
-                                    combinedLogs.append("$statusIcon ${step.number}. ${step.name} - ${step.status}$conclusionText\n")
+                                    combinedLogs.append("--------------------------------------------------\n")
+                                    combinedLogs.append("(Live build is in-progress. Full raw logs will be finalized on completion.)\n")
+                                } else {
+                                    combinedLogs.append("Unable to retrieve logs for step execution: ${e.message}\n")
                                 }
                             }
-                            combinedLogs.append("--------------------------------------------------\n")
-                            combinedLogs.append("(Live build is in-progress. Full raw logs will be finalized on completion.)\n")
-                        } else {
-                            combinedLogs.append("Unable to retrieve logs for step execution: ${e.message}\n")
+                            combinedLogs.append("\n")
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            _workflowLogs.value = combinedLogs.toString()
+                        }
+
+                        // If all build steps and jobs have completed, we can safely terminate the polling loop
+                        if (!anyJobActive) {
+                            shouldContinuePolling = false
                         }
                     }
-                    combinedLogs.append("\n")
+                } catch (e: Exception) {
+                    AppLogger.e("WorkflowLogs", "Active polling cycle failed: ${e.message}", e)
+                    if (isFirstFetch) {
+                        withContext(Dispatchers.Main) {
+                            _workflowLogs.value = "Workflow logs retrieve error: ${e.message}"
+                        }
+                        shouldContinuePolling = false
+                    }
+                } finally {
+                    if (isFirstFetch) {
+                        _isLogsLoading.value = false
+                        isFirstFetch = false
+                    }
                 }
-                _workflowLogs.value = combinedLogs.toString()
-            } catch (e: Exception) {
-                AppLogger.e("WorkflowLogs", "Workflow run logs lookup failed: ${e.message}", e)
-                _workflowLogs.value = "Workflow logs retrieve error: ${e.message}"
-            } finally {
-                _isLogsLoading.value = false
+
+                // Delay polling for 3 seconds before executing the next check
+                if (shouldContinuePolling) {
+                    delay(3000)
+                }
             }
         }
     }
@@ -1109,6 +1154,8 @@ class RepoDetailViewModel(
 
     fun clearWorkflowLogs() {
         _workflowLogs.value = null
+        // Ensure any active log background polling task is immediately halted on dialog dismiss
+        pollingJob?.cancel()
     }
 
     fun triggerWorkflow(workflowId: Long) {
@@ -1149,6 +1196,11 @@ class RepoDetailViewModel(
     fun closeActiveFile() {
         _activeFile.value = null
         _fileContent.value = ""
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        pollingJob?.cancel()
     }
 }
 
