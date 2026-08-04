@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -650,8 +651,9 @@ fun ExplorerTabContent(
                         OutlinedTextField(
                             value = localSearchQuery,
                             onValueChange = { localSearchQuery = it },
-                            placeholder = { Text("Search file/folder...", fontSize = 11.sp, color = GhTextSecondaryDark) },
+                            placeholder = { Text("Search file/folder...", fontSize = 12.sp, color = GhTextSecondaryDark) },
                             singleLine = true,
+                            textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
@@ -663,7 +665,7 @@ fun ExplorerTabContent(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp),
+                                .height(48.dp),
                             trailingIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
@@ -1776,4 +1778,3 @@ fun RepoSettingsTabContent(repoDetailViewModel: RepoDetailViewModel, onBack: () 
         }
     }
 }
-
